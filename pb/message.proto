@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package pb;
+
+import "google/protobuf/timestamp.proto";
+
+service StreamService {
+    rpc MessageStream (stream Message) returns (stream Message) {}
+}
+
+message Message {
+
+    // The signature of source node who sent this message
+    bytes signature = 1;
+
+    // The time when the source sends
+    google.protobuf.Timestamp timestamp = 2;
+
+    oneof payload {
+        RBC rbc = 3;
+        BBA bba = 4;
+    }
+}
+
+message RBC {
+
+    // marshaled data by type
+    bytes payload = 1;
+
+    enum type {
+        VAL = 0;
+        ECHO = 1;
+        READY = 2;
+    }
+}
+
+message BBA {
+
+    // marshaled data by type
+    bytes payload = 1;
+
+    enum type {
+        BVAL = 0;
+        AUX = 1;
+    }
+}
