@@ -2,6 +2,10 @@
 
 Cleisthenes is HBBFT(Honey Badger Byzantine Fault Tolerance) consensus library adaptable to any application.
 
+## Documentation
+
+* [Byzantine Binary Agreement (BBA)](./docs/BBA-EN.md)
+
 ## Architecture
 
 ### Logical View
@@ -27,11 +31,10 @@ Cleisthenes is HBBFT(Honey Badger Byzantine Fault Tolerance) consensus library a
     	<img src="./img/cleisthenes-module-view.png" width="600" height="420"></img>
 </p>
 
-
-### Contribution
+## Contribution
 Contribution Guide
 [CONTRIBUTION](CONTRIBUTING.md)
 
-### CLA Hub
+## CLA Hub
 
 To get started, <a href="https://www.clahub.com/agreements/DE-labtory/cleisthenes">sign the Contributor License Agreement</a>.
