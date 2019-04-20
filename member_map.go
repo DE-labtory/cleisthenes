@@ -1,20 +1,23 @@
 package cleisthenes
 
 import (
-	"net"
 	"sync"
 )
 
 type MemberId = string
 
-// Member contains node information who participate in the network
-type Member struct {
-	Id   MemberId
-	Host net.IP
+type Address struct {
+	Ip   string
 	Port uint16
 }
 
-func NewMember(id string, host string, port int) *Member {
+// Member contains node information who participate in the network
+type Member struct {
+	Id   MemberId
+	Addr Address
+}
+
+func NewMember(id string, host string, port uint16) *Member {
 	panic("implement me w/ test case :-)")
 }
 
