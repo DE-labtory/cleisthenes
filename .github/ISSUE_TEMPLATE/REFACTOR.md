@@ -1,6 +1,6 @@
 ---
 name: Refactor
-about: Refactor codes or improve the structure of koa project
+about: Refactor codes or improve the structure of this project
 
 ---
 
