@@ -1,6 +1,6 @@
 ---
 name: Question
-about: Question about DE-labtory project
+about: Question about this project
 
 ---
 
