@@ -2,10 +2,9 @@ package cleisthenes_test
 
 import (
 	"bytes"
-	"testing"
-
 	"github.com/DE-labtory/cleisthenes"
 	"github.com/DE-labtory/cleisthenes/pb"
+	"testing"
 )
 
 type mockHandler struct {
@@ -52,7 +51,6 @@ func TestGrpcServer(t *testing.T) {
 	}
 	server := cleisthenes.NewServer(cleisthenes.Address{Ip: "127.0.0.1", Port: 7771})
 	server.OnConn(onConnection)
-	defer server.Stop()
 	go server.Listen()
 
 	//
