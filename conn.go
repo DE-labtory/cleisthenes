@@ -8,7 +8,7 @@ import (
 	"github.com/DE-labtory/cleisthenes/pb"
 )
 
-type ConnID = string
+type ConnId = string
 
 // message used in HBBFT
 type innerMessage struct {
@@ -31,14 +31,14 @@ type Handler interface {
 type Connection interface {
 	Send(msg pb.Message, successCallBack func(interface{}), errCallBack func(error))
 	Ip() Address
-	Id() ConnID
+	Id() ConnId
 	Close()
 	Start() error
 	Handle(handler Handler)
 }
 
 type GrpcConnection struct {
-	id            ConnID
+	id            ConnId
 	ip            Address
 	streamWrapper StreamWrapper
 	stopFlag      int32
@@ -49,7 +49,7 @@ type GrpcConnection struct {
 	sync.RWMutex
 }
 
-func NewConnection(ip Address, id ConnID, streamWrapper StreamWrapper) (Connection, error) {
+func NewConnection(ip Address, id ConnId, streamWrapper StreamWrapper) (Connection, error) {
 	if streamWrapper == nil {
 		return nil, errors.New("fail to create connection ! : streamWrapper is nil")
 	}
@@ -80,7 +80,7 @@ func (conn *GrpcConnection) Ip() Address {
 	return conn.ip
 }
 
-func (conn *GrpcConnection) Id() ConnID {
+func (conn *GrpcConnection) Id() ConnId {
 	return conn.id
 }
 
@@ -184,17 +184,17 @@ type Broadcaster interface {
 }
 
 type ConnectionPool struct {
-	connMap map[ConnID]Connection
+	connMap map[ConnId]Connection
 }
 
 func (p *ConnectionPool) Broadcast(data []byte, typ string) {
 	panic("implement me w/ test case :-)")
 }
 
-func (p *ConnectionPool) Add(id ConnID, conn Connection) {
+func (p *ConnectionPool) Add(id ConnId, conn Connection) {
 	panic("implement me w/ test case :-)")
 }
 
-func (p *ConnectionPool) Remove(id ConnID) {
+func (p *ConnectionPool) Remove(id ConnId) {
 	panic("implement me w/ test case :-)")
 }

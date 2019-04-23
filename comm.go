@@ -6,7 +6,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/prometheus/common/log"
+	"github.com/DE-labtory/iLogger"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/reflection"
@@ -78,7 +79,7 @@ func (s *GrpcServer) OnErr(handler ErrHandler) {
 func (s *GrpcServer) Listen() {
 	lis, err := net.Listen("tcp", s.addr.String())
 	if err != nil {
-		log.Infof("listen error: %s", err.Error())
+		iLogger.Errorf(nil, "listen error: %s", err.Error())
 	}
 	defer lis.Close()
 
@@ -88,10 +89,10 @@ func (s *GrpcServer) Listen() {
 	pb.RegisterStreamServiceServer(g, s)
 	reflection.Register(g)
 	s.lis = lis
-	log.Infof("listen ... on: [%s]", s.addr.String())
+	iLogger.Infof(nil, "listen ... on: [%s]", s.addr.String())
 
 	if err := g.Serve(lis); err != nil {
-		log.Errorf("listen error: [%s]", err.Error())
+		iLogger.Errorf(nil, "listen error: [%s]", err.Error())
 		g.Stop()
 		lis.Close()
 	}
