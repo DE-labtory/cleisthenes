@@ -22,7 +22,7 @@
 
 ### Branch naming rule
 
-> [type]/[issue] or [type]/[description]
+> [type]/[description]
 
 Sample
 
@@ -38,6 +38,7 @@ Sample
 * Start with lowercase letter.  
 * Don't put a `.` at the end of the message.
 * Write message authoritatively
+* Add issue number to end of commit message.
 
 #### Format
 
@@ -45,9 +46,9 @@ Sample
 
 Sample
 
-> docs : add more description about PBFT 
+> docs : add more description about PBFT [ISSUE-1]
 
-> fix : change type int to unit
+> fix : change type int to unit [ISSUE-20]
 
 
 #### Type
