@@ -180,6 +180,7 @@ func (*Message) XXX_OneofWrappers() []interface{} {
 type RBC struct {
 	// marshaled data by type
 	Payload              []byte   `protobuf:"bytes,1,opt,name=payload,proto3" json:"payload,omitempty"`
+	Type                 RBCType  `protobuf:"varint,2,opt,name=type,enum=pb.RBCType" json:"type,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
@@ -220,6 +221,7 @@ func (m *RBC) GetPayload() []byte {
 type BBA struct {
 	// marshaled data by type
 	Payload              []byte   `protobuf:"bytes,1,opt,name=payload,proto3" json:"payload,omitempty"`
+	Type                 BBAType  `protobuf:"varint,2,opt,name=type,enum=pb.BBAType" json:"type,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
