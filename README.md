@@ -8,7 +8,7 @@ More detail of each component is documented here
 
 * HoneyBadgerBFT Overview **[[KO](./docs/HONEYBADGER-KO.md) / [EN]((./docs/HONEYBADGER-EN.md))]**
 * Reliable Broadcast (RBC) **[[KO](./docs/RBC-KR.md) / [EN](./docs/RBC-EN.md)]**
-* Byzantine Binary Agreement (BBA) **[KO / [EN]((./docs/BBA-EN.md))]**
+* Byzantine Binary Agreement (BBA) **[KO / [EN](./docs/BBA-EN.md)]**
 * Threshold Encryption (TE) **[KO / [EN](./docs/THRESHOLD_ENCRYPTION-EN.md)]**
 
 
