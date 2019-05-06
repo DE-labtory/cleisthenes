@@ -9,7 +9,7 @@ type mockTransaction struct {
 func TestQueue_peek(t *testing.T) {
 	inputs := []Transaction{
 		&mockTransaction{
-			"a",
+			name: "a",
 		},
 		&mockTransaction{
 			name: "b",
@@ -37,7 +37,7 @@ func TestQueue_peek(t *testing.T) {
 func TestQueue_Poll(t *testing.T) {
 	inputs := []Transaction{
 		&mockTransaction{
-			"a",
+			name: "a",
 		},
 		&mockTransaction{
 			name: "b",
@@ -78,8 +78,8 @@ func TestQueue_len(t *testing.T) {
 	que := NewQueue()
 	for i := 1; i < 10; i++ {
 		que.Push(&mockTransaction{name: "tx"})
-		if que.len() != i {
-			t.Fatalf("test length failed : expected = %d, got = %d", i, que.len())
+		if que.Len() != i {
+			t.Fatalf("test length failed : expected = %d, got = %d", i, que.Len())
 		}
 	}
 }
@@ -122,7 +122,7 @@ func TestQueue_at(t *testing.T) {
 func TestQueue_Push(t *testing.T) {
 	inputs := []Transaction{
 		&mockTransaction{
-			"a",
+			name: "a",
 		},
 		&mockTransaction{
 			name: "b",
@@ -139,7 +139,7 @@ func TestQueue_Push(t *testing.T) {
 			t.Fatalf("test[%d] failed - queue's first element is invalid", i)
 		}
 
-		if result, _ := que.at(que.len() - 1); result != input {
+		if result, _ := que.at(que.Len() - 1); result != input {
 			t.Fatalf("test[%d] failed - queue's last element is invalid", i)
 		}
 	}

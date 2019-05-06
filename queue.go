@@ -6,8 +6,9 @@ import (
 )
 
 type queue interface {
-	Push()
-	Poll()
+	Push(tx Transaction)
+	Poll() (Transaction, error)
+	Len() int
 }
 
 // memQueue defines transaction FIFO memQueue
@@ -69,15 +70,15 @@ func (q *memQueue) Poll() (Transaction, error) {
 }
 
 // len returns size of memQueue
-func (q *memQueue) len() int {
+func (q *memQueue) Len() int {
 	return len(q.txs)
 }
 
 // at returns element of index in memQueue
 func (q *memQueue) at(index int) (Transaction, error) {
-	if index >= q.len() {
+	if index >= q.Len() {
 		return nil, &indexBoundaryErr{
-			queSize: q.len(),
+			queSize: q.Len(),
 			want:    index,
 		}
 	}
