@@ -30,12 +30,12 @@ type BBA struct {
 	// number of network nodes
 	n int
 
-	// number of byzantine nodes
+	// number of byzantine nodes which can tolerate
 	f int
 
 	proposer cleisthenes.Member
 
-	stop int32
+	stopFlag int32
 	// done is flag whether BBA is terminated or not
 	done bool
 
@@ -47,12 +47,13 @@ type BBA struct {
 	// sentBvalSet is set of bval value instance has sent
 	sentBvalSet binarySet
 
+	binValues []Binary
 	// est is estimated value of BBA instance, dec is decision value
 	est, dec Binary
 
-	bvalRepo        cleisthenes.RequestRepository
-	auxRepo         cleisthenes.RequestRepository
-	incomingReqRepo cleisthenes.IncomingRequestRepository
+	bvalRepo        bvalReqRepository
+	auxRepo         auxReqRepository
+	incomingReqRepo incomingReqRepository
 
 	closeChan chan struct{}
 	reqChan   chan request
@@ -80,7 +81,7 @@ func (b *BBA) Result() bool {
 }
 
 func (b *BBA) Close() {
-	if first := atomic.CompareAndSwapInt32(&b.stop, int32(0), int32(1)); !first {
+	if first := atomic.CompareAndSwapInt32(&b.stopFlag, int32(0), int32(1)); !first {
 		return
 	}
 	b.closeChan <- struct{}{}
@@ -107,7 +108,7 @@ func (b *BBA) handleAuxRequest(msg request) error {
 }
 
 func (b *BBA) toDie() bool {
-	return atomic.LoadInt32(&(b.stop)) == int32(1)
+	return atomic.LoadInt32(&(b.stopFlag)) == int32(1)
 }
 
 func (b *BBA) run() {
