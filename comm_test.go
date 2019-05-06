@@ -2,9 +2,11 @@ package cleisthenes_test
 
 import (
 	"bytes"
+	"testing"
+	"time"
+
 	"github.com/DE-labtory/cleisthenes"
 	"github.com/DE-labtory/cleisthenes/pb"
-	"testing"
 )
 
 type mockHandler struct {
@@ -49,10 +51,12 @@ func TestGrpcServer(t *testing.T) {
 			conn.Close()
 		}
 	}
-	server := cleisthenes.NewServer(cleisthenes.Address{Ip: "127.0.0.1", Port: 7771})
+	server := cleisthenes.NewServer(cleisthenes.Address{Ip: "127.0.0.1", Port: 8080})
 	server.OnConn(onConnection)
 	go server.Listen()
 
+	t.Log("sleep 1 sec for bootstrapping grpc server …")
+	time.Sleep(1 * time.Second)
 	//
 	// create new grpc client
 	//
@@ -60,7 +64,7 @@ func TestGrpcServer(t *testing.T) {
 	conn, err := cli.Dial(cleisthenes.DialOpts{
 		Addr: cleisthenes.Address{
 			Ip:   "127.0.0.1",
-			Port: 7771,
+			Port: 8080,
 		},
 		Timeout: cleisthenes.DefaultDialTimeout,
 	})
