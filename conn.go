@@ -53,7 +53,6 @@ func NewConnection(ip Address, id ConnID, streamWrapper StreamWrapper) (Connecti
 	if streamWrapper == nil {
 		return nil, errors.New("fail to create connection ! : streamWrapper is nil")
 	}
-
 	return &GrpcConnection{
 		id:            id,
 		ip:            ip,
@@ -90,18 +89,16 @@ func (conn *GrpcConnection) Close() {
 		return
 	}
 
-	isFisrt := atomic.CompareAndSwapInt32(&conn.stopFlag, int32(0), int32(1))
-
-	if !isFisrt {
+	isFirst := atomic.CompareAndSwapInt32(&conn.stopFlag, int32(0), int32(1))
+	if !isFirst {
 		return
 	}
 
 	conn.stopChan <- struct{}{}
 	conn.Lock()
+	defer conn.Unlock()
 
 	conn.streamWrapper.Close()
-
-	conn.Unlock()
 }
 
 func (conn *GrpcConnection) Start() error {
@@ -146,7 +143,6 @@ func (conn *GrpcConnection) isDie() bool {
 func (conn *GrpcConnection) writeStream() {
 	for !conn.isDie() {
 		select {
-
 		case m := <-conn.outChan:
 			err := conn.streamWrapper.Send(m.Message)
 			if err != nil {
@@ -172,16 +168,13 @@ func (conn *GrpcConnection) readStream(errChan chan error) {
 
 	for !conn.isDie() {
 		envelope, err := conn.streamWrapper.Recv()
-
 		if conn.isDie() {
 			return
 		}
-
 		if err != nil {
 			errChan <- err
 			return
 		}
-
 		conn.readChan <- envelope
 	}
 }

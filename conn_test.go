@@ -29,24 +29,22 @@ func (h *MockHandler) ServeRequest(msg cleisthenes.Message) {
 func TestGrpcConnection_Send(t *testing.T) {
 	cAddress := cleisthenes.Address{"127.0.0.1", 8080}
 
-	mockStreamWrapper := mock.NewMockStreamWrapper()
+	mockStreamWrapper := mock.NewStreamWrapper()
 	conn, err := cleisthenes.NewConnection(cAddress, "127.0.0.1:8081", mockStreamWrapper)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
 	done := make(chan struct{}, 1)
 
 	mockHandler := NewMockHandler(done)
 	mockHandler.ServeRequestFunc = func(msg cleisthenes.Message) {
-		if msg.GetRbc() == nil {
-			t.Error("receive invalid message type")
+		if msg.GetRbc().Type != pb.RBC_VAL {
+			t.Fatalf("expected message type is %s, but got %s", pb.RBCType_name[int32(pb.RBC_VAL)], msg.GetRbc().Type)
 		}
-
 		if !bytes.Equal(msg.GetRbc().Payload, []byte("kim")) {
-			t.Error("receive invalid message payload")
+			t.Fatalf("expected message payload is %s, but got %s", "kim", string(msg.GetRbc().Payload))
 		}
-
 		done <- struct{}{}
 	}
 	conn.Handle(mockHandler)
@@ -75,34 +73,34 @@ func TestGrpcConnection_Send(t *testing.T) {
 func TestGrpcConnection_GetIP(t *testing.T) {
 	cAddress := cleisthenes.Address{"127.0.0.1", 8080}
 
-	mockStreamWrapper := mock.NewMockStreamWrapper()
+	mockStreamWrapper := mock.NewStreamWrapper()
 
 	conn, err := cleisthenes.NewConnection(cAddress, "127.0.0.1:8081", mockStreamWrapper)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
 	address := conn.Ip()
 
 	if strings.Compare(cAddress.Ip, address.Ip) != 0 || cAddress.Port != address.Port {
-		t.Error("not equal address")
+		t.Fatal("not equal address")
 	}
 }
 
 func TestGrpcConnection_GetID(t *testing.T) {
 	id := "someNetworkID"
 
-	mockStreamWrapper := mock.NewMockStreamWrapper()
+	mockStreamWrapper := mock.NewStreamWrapper()
 
 	conn, err := cleisthenes.NewConnection(cleisthenes.Address{}, id, mockStreamWrapper)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
 	connId := conn.Id()
 
 	if strings.Compare(id, connId) != 0 {
-		t.Error("not equal id")
+		t.Fatal("not equal id")
 	}
 }
 
@@ -112,11 +110,11 @@ func TestGrpcConnection_Close(t *testing.T) {
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
-	mockStreamWrapper := mock.NewMockStreamWrapper()
+	mockStreamWrapper := mock.NewStreamWrapper()
 
 	conn, err := cleisthenes.NewConnection(cAddress, "127.0.0.1:8081", mockStreamWrapper)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
 	go func() {
@@ -126,7 +124,7 @@ func TestGrpcConnection_Close(t *testing.T) {
 
 	go func() {
 		if err := conn.Start(); err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 	}()
 

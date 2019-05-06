@@ -1,6 +1,7 @@
 package cleisthenes
 
 import (
+	"fmt"
 	"net"
 	"strconv"
 	"sync"
@@ -11,6 +12,10 @@ type MemberId = string
 type Address struct {
 	Ip   string
 	Port uint16
+}
+
+func (a Address) String() string {
+	return fmt.Sprintf("%s:%d", a.Ip, a.Port)
 }
 
 // Member contains node information who participate in the network
