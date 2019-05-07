@@ -16,7 +16,6 @@ echo "go test fail" >&2
 exit 1
 fi
 
-
 # go test with race condition option and check coverage
 go test ./... -race -coverprofile cover.out -covermode=atomic
 
@@ -37,20 +36,7 @@ echo "go update test coverage fail" >&2
 exit 1
 fi
 
-# total test coverage
-cover=$(awk '{print $3}' total.out | tail -n 1 | cut -d . -f 1)
-
-# project criteria
-criteria=80
-
 # remove
 rm total.out cover.out
-
-if [ "$cover" -gt "$criteria" ]; then
-    echo "Success to cover test coverage - got : $cover"
-else
-    echo "Test coverage criteria fail - got : $cover expected : $criteria"
-    exit 1
-fi
 
 exit 0
