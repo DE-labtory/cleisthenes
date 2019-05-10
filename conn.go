@@ -180,21 +180,29 @@ func (conn *GrpcConnection) readStream(errChan chan error) {
 }
 
 type Broadcaster interface {
-	Broadcast(data []byte, typ string, succCallback func(interface{}), errCallback func(error))
+	Broadcast(msg pb.Message)
 }
 
 type ConnectionPool struct {
 	connMap map[ConnId]Connection
 }
 
-func (p *ConnectionPool) Broadcast(data []byte, typ string) {
-	panic("implement me w/ test case :-)")
+func NewConnectionPool() *ConnectionPool {
+	return &ConnectionPool{
+		connMap: make(map[ConnId]Connection),
+	}
+}
+func (p *ConnectionPool) Broadcast(msg pb.Message) {
+	for _, r := range p.connMap {
+		r.Send(msg, nil, nil)
+	}
 }
 
-func (p *ConnectionPool) Add(id ConnId, conn Connection) {
-	panic("implement me w/ test case :-)")
+func (p *ConnectionPool) Add(id ConnId,conn Connection) {
+	p.connMap[id] = conn
 }
 
 func (p *ConnectionPool) Remove(id ConnId) {
-	panic("implement me w/ test case :-)")
+	delete(p.connMap, id)
+
 }
