@@ -2,6 +2,8 @@ cloud.google.com/go v0.26.0/go.mod h1:aQUYkXzVsufM+DwF1aE+0xfcU+56JwCaLick0ClmMT
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/DE-labtory/iLogger v1.0.0 h1:BABqjXNVPQuXxgo9XgItWDxraER8CP13ssboXm3Nzss=
 github.com/DE-labtory/iLogger v1.0.0/go.mod h1:s5G85XIDMENKq7FKEdtMiJys+siRiYHnXUU6/+Rh6Wc=
+github.com/cbergoon/merkletree v0.0.0-20190307191648-015148bca400 h1:8aB+fslWszjK9nS+Scg313V93jQT685pQQWTzicNmTQ=
+github.com/cbergoon/merkletree v0.0.0-20190307191648-015148bca400/go.mod h1:fWmLHd6+ahbHDOdT5B3G6AUOvg7C/rXgAbKAu12toeo=
 github.com/client9/misspell v0.3.4/go.mod h1:qj6jICC3Q7zFZvVWo7KLAzC3yx5G7kyvSDkc90ppPyw=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
