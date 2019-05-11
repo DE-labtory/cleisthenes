@@ -183,21 +183,26 @@ type Broadcaster interface {
 	// ShareMessage is a function that broadcast Single message to all nodes
 	ShareMessage(msg pb.Message)
 
-	// DistributeMessage is a function that broadcast Multiple messages one by one to all nodes
+	// DistributeMessage is a function that broadcast multiple different messages one by one to all nodes
 	DistributeMessage(msgList []pb.Message)
 }
 
 type ConnectionPool struct {
-	connMap map[ConnId]Connection
+	lock    sync.RWMutex
+	connMap map[Address]Connection
 }
 
 func NewConnectionPool() *ConnectionPool {
 	return &ConnectionPool{
-		connMap: make(map[ConnId]Connection),
+		lock:    sync.RWMutex{},
+		connMap: make(map[Address]Connection),
 	}
 }
 
 func (p *ConnectionPool) GetAll() []Connection {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
 	connList := make([]Connection, 0)
 	for _, conn := range p.connMap {
 		connList = append(connList, conn)
@@ -206,7 +211,7 @@ func (p *ConnectionPool) GetAll() []Connection {
 }
 
 func (p *ConnectionPool) ShareMessage(msg pb.Message) {
-	for _, conn := range p.connMap {
+	for _, conn := range p.GetAll() {
 		conn.Send(msg, nil, nil)
 	}
 }
@@ -220,10 +225,16 @@ func (p *ConnectionPool) DistributeMessage(msgList []pb.Message) {
 	}
 }
 
-func (p *ConnectionPool) Add(id ConnId, conn Connection) {
-	p.connMap[id] = conn
+func (p *ConnectionPool) Add(addr Address, conn Connection) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	p.connMap[addr] = conn
 }
 
-func (p *ConnectionPool) Remove(id ConnId) {
-	delete(p.connMap, id)
+func (p *ConnectionPool) Remove(addr Address) {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	delete(p.connMap, addr)
 }

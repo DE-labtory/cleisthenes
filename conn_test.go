@@ -218,13 +218,13 @@ func newConnectionTester(connListSize int) *connectionTester {
 func (c *connectionTester) setupConnectionPool() (*cleisthenes.ConnectionPool, error) {
 	connPool := cleisthenes.NewConnectionPool()
 	for i := 0; i < c.connListSize; i++ {
-		addr := cleisthenes.Address{"127.0.0.1", GetAvailablePort(8000)}
+		addr := cleisthenes.Address{"127.0.0.1", uint16(8000 + i)}
 		conn, err := cleisthenes.NewConnection(addr, "TestConnection"+strconv.Itoa(i+1), mock.NewStreamWrapper())
 		if err != nil {
 			return nil, err
 		}
 
-		connPool.Add(conn.Id(), conn)
+		connPool.Add(addr, conn)
 	}
 	return connPool, nil
 }
@@ -402,7 +402,6 @@ func TestConnectionPool_DistributeMessage_NodeNumBigger(t *testing.T) {
 }
 
 func TestConnectionPool_Add(t *testing.T) {
-	cAddr := cleisthenes.Address{"127.0.0.1", GetAvailablePort(8000)}
 	mockStreamWrapper := mock.NewStreamWrapper()
 	cp := cleisthenes.NewConnectionPool()
 
@@ -412,14 +411,15 @@ func TestConnectionPool_Add(t *testing.T) {
 
 	for i, _ := range connList {
 		connId := "TestConnection" + strconv.Itoa(i+1)
-		connList[i], err = cleisthenes.NewConnection(cAddr, connId, mockStreamWrapper)
+		addr := cleisthenes.Address{Ip: "127.0.0.1", Port: uint16(8000 + i)}
+		connList[i], err = cleisthenes.NewConnection(addr, connId, mockStreamWrapper)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	for _, conn := range connList {
-		cp.Add(conn.Id(), conn)
+		cp.Add(conn.Ip(), conn)
 	}
 
 	if connNum != len(cp.GetAll()) {
@@ -441,7 +441,6 @@ func TestConnectionPool_Add(t *testing.T) {
 }
 
 func TestConnectionPool_Remove(t *testing.T) {
-	cAddr := cleisthenes.Address{"127.0.0.1", 8000}
 	mockStreamWrapper := mock.NewStreamWrapper()
 	cp := cleisthenes.NewConnectionPool()
 
@@ -451,21 +450,22 @@ func TestConnectionPool_Remove(t *testing.T) {
 
 	for i, _ := range connList {
 		connId := "TestConnection" + strconv.Itoa(i+1)
-		connList[i], err = cleisthenes.NewConnection(cAddr, connId, mockStreamWrapper)
+		addr := cleisthenes.Address{Ip: "127.0.0.1", Port: uint16(8000 + i)}
+		connList[i], err = cleisthenes.NewConnection(addr, connId, mockStreamWrapper)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	for _, conn := range connList {
-		cp.Add(conn.Id(), conn)
+		cp.Add(conn.Ip(), conn)
 	}
 
 	deleteNum := 2
-	deleteConnList := make([]cleisthenes.ConnId, deleteNum)
+	deleteConnList := make([]cleisthenes.Address, deleteNum)
 
 	for i, _ := range deleteConnList {
-		deleteConnList[i] = connList[i].Id()
+		deleteConnList[i] = connList[i].Ip()
 	}
 
 	for _, deleteConnId := range deleteConnList {
