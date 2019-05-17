@@ -27,6 +27,10 @@ message RBC {
     // marshaled data by type
     bytes payload = 1;
 
+    // message's epoch
+    uint64 epoch = 2;
+
+    // payload type
     enum type {
         VAL = 0;
         ECHO = 1;
@@ -39,6 +43,13 @@ message BBA {
     // marshaled data by type
     bytes payload = 1;
 
+    // message's epoch
+    uint64 epoch = 2;
+
+    // each epoch's BBA round, it is different with epoch
+    uint64 round = 3;
+
+    // payload type
     enum type {
         BVAL = 0;
         AUX = 1;
