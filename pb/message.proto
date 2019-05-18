@@ -16,9 +16,12 @@ message Message {
     // The time when the source sends
     google.protobuf.Timestamp timestamp = 2;
 
+    // message's epoch
+    uint64 epoch = 3;
+
     oneof payload {
-        RBC rbc = 3;
-        BBA bba = 4;
+        RBC rbc = 4;
+        BBA bba = 5;
     }
 }
 
@@ -26,9 +29,6 @@ message RBC {
 
     // marshaled data by type
     bytes payload = 1;
-
-    // message's epoch
-    uint64 epoch = 2;
 
     // payload type
     enum type {
@@ -42,9 +42,6 @@ message BBA {
 
     // marshaled data by type
     bytes payload = 1;
-
-    // message's epoch
-    uint64 epoch = 2;
 
     // each epoch's BBA round, it is different with epoch
     uint64 round = 3;
