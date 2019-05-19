@@ -4,6 +4,8 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/DE-labtory/cleisthenes/rbc/merkletree"
+
 	"github.com/DE-labtory/cleisthenes"
 	"github.com/DE-labtory/cleisthenes/pb"
 )
@@ -11,8 +13,9 @@ import (
 type (
 	ValRequest struct {
 		RootHash []byte
-		Branch   []byte
-		Block    [][]byte
+		Data     merkletree.Data
+		RootPath merkletree.RootPath
+		Indexes  []int64
 	}
 
 	EchoRequest struct {
@@ -51,16 +54,15 @@ type (
 )
 
 type (
-	// InnerMessage used in channel when received message
-	InnerMessage struct {
+	request struct {
 		senderId cleisthenes.ConnId
-		msg      *pb.Message
-		err      error
+		data     *pb.Message_Rbc
+		err      chan error
 	}
 
 	// InnerRequest used in channel when send messages
-	InnerRequest struct {
-		msgs []*pb.Message
+	InputMessage struct {
+		reqs []request
 		err  error
 	}
 )

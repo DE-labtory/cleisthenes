@@ -3,11 +3,13 @@ package rbc
 import (
 	"reflect"
 	"testing"
+
+	"github.com/DE-labtory/cleisthenes/rbc/merkletree"
 )
 
 func TestValReqRepository_Find(t *testing.T) {
 	valReqList, _ := NewValReqRepository()
-	val := ValRequest{nil, nil, nil}
+	val := ValRequest{nil, merkletree.NewData(nil), nil, nil}
 	valReqList.Save("ID1", &val)
 	_, ok := valReqList.Find("ID1")
 	if ok != nil {
@@ -16,7 +18,7 @@ func TestValReqRepository_Find(t *testing.T) {
 }
 func TestValReqRepository_FindAll(t *testing.T) {
 	valReqList, _ := NewValReqRepository()
-	val := ValRequest{nil, nil, nil}
+	val := ValRequest{nil, merkletree.NewData(nil), nil, nil}
 	valReqList.Save("ID1", &val)
 	valReqList.Save("ID2", &val)
 
@@ -32,7 +34,7 @@ func TestValReqRepository_FindAll(t *testing.T) {
 }
 func TestValReqRepository_Save(t *testing.T) {
 	valReqList, _ := NewValReqRepository()
-	val := ValRequest{nil, nil, nil}
+	val := ValRequest{nil, merkletree.NewData(nil), nil, nil}
 	valReqList.Save("ID1", &val)
 	_, ok := valReqList.recv["ID1"]
 	if !ok {
@@ -53,7 +55,7 @@ func TestNewEchoReqRepository(t *testing.T) {
 }
 func TestEchoReqRepository_Find(t *testing.T) {
 	echoReqList, _ := NewEchoReqRepository()
-	val := ValRequest{nil, nil, nil}
+	val := ValRequest{nil, merkletree.NewData(nil), nil, nil}
 	echo := EchoRequest{val}
 	echoReqList.Save("ID1", &echo)
 	_, ok := echoReqList.Find("ID1")
@@ -64,7 +66,7 @@ func TestEchoReqRepository_Find(t *testing.T) {
 }
 func TestEchoReqRepository_FindAll(t *testing.T) {
 	echoReqList, _ := NewEchoReqRepository()
-	val := ValRequest{nil, nil, nil}
+	val := ValRequest{nil, merkletree.NewData(nil), nil, nil}
 	echo := EchoRequest{val}
 	echoReqList.Save("ID1", &echo)
 	echoReqList.Save("ID2", &echo)
@@ -80,7 +82,7 @@ func TestEchoReqRepository_FindAll(t *testing.T) {
 }
 func TestEchoReqRepository_Save(t *testing.T) {
 	echoReqList, _ := NewEchoReqRepository()
-	val := ValRequest{nil, nil, nil}
+	val := ValRequest{nil, merkletree.NewData(nil), nil, nil}
 	echo := EchoRequest{val}
 	echoReqList.Save("ID1", &echo)
 	_, ok := echoReqList.recv["ID1"]

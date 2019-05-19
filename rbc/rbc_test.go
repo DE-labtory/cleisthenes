@@ -6,6 +6,10 @@ func TestNewRBC(t *testing.T) {
 
 }
 
+func TestRBC_MakeRequest(t *testing.T) {
+
+}
+
 func TestRBC_HandleMessage(t *testing.T) {
 
 }

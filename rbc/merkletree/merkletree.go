@@ -55,6 +55,10 @@ func (d Data) Equals(a Data) (bool, error) {
 	return d.content.Equals(a.content)
 }
 
+func (d Data) Bytes() []byte {
+	return d.content
+}
+
 type content []byte
 
 func (c content) CalculateHash() ([]byte, error) {
