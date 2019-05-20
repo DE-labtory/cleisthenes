@@ -6,7 +6,7 @@ type Request interface {
 
 type RequestRepository interface {
 	Save(connId ConnId, req Request) error
-	Find(connId ConnId) Request
+	Find(connId ConnId) (Request, error)
 	FindAll() []Request
 }
 
