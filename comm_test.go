@@ -3,6 +3,7 @@ package cleisthenes_test
 import (
 	"bytes"
 	"testing"
+
 	"time"
 
 	"github.com/DE-labtory/cleisthenes"
