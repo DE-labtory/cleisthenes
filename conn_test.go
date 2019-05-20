@@ -2,6 +2,8 @@ package cleisthenes_test
 
 import (
 	"bytes"
+	"errors"
+	"net"
 	"reflect"
 	"strconv"
 	"strings"
@@ -25,12 +27,27 @@ func NewMockHandler(done chan struct{}) *MockHandler {
 	}
 }
 
+func GetAvailablePort(startPort uint16) uint16 {
+	portNumber := startPort
+	for {
+		strPortNumber := strconv.Itoa(int(portNumber))
+		lis, err := net.Listen("tcp", "127.0.0.1:"+strPortNumber)
+
+		if err == nil {
+			_ = lis.Close()
+			return portNumber
+		}
+
+		portNumber++
+	}
+}
+
 func (h *MockHandler) ServeRequest(msg cleisthenes.Message) {
 	h.ServeRequestFunc(msg)
 }
 
 func TestGrpcConnection_Send(t *testing.T) {
-	cAddress := cleisthenes.Address{"127.0.0.1", 8080}
+	cAddress := cleisthenes.Address{"127.0.0.1", GetAvailablePort(8000)}
 
 	mockStreamWrapper := mock.NewStreamWrapper()
 	conn, err := cleisthenes.NewConnection(cAddress, "127.0.0.1:8081", mockStreamWrapper)
@@ -74,7 +91,7 @@ func TestGrpcConnection_Send(t *testing.T) {
 }
 
 func TestGrpcConnection_GetIP(t *testing.T) {
-	cAddress := cleisthenes.Address{"127.0.0.1", 8080}
+	cAddress := cleisthenes.Address{"127.0.0.1", GetAvailablePort(8000)}
 
 	mockStreamWrapper := mock.NewStreamWrapper()
 
@@ -108,7 +125,7 @@ func TestGrpcConnection_GetID(t *testing.T) {
 }
 
 func TestGrpcConnection_Close(t *testing.T) {
-	cAddress := cleisthenes.Address{"127.0.0.1", 8080}
+	cAddress := cleisthenes.Address{"127.0.0.1", GetAvailablePort(8000)}
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -135,74 +152,197 @@ func TestGrpcConnection_Close(t *testing.T) {
 	wg.Wait()
 }
 
-func TestConnectionPool_Broadcast(t *testing.T) {
-	cp := cleisthenes.NewConnectionPool()
+func setUpConnection(cp *cleisthenes.ConnectionPool) error {
+	cAddressList := make([]cleisthenes.Address, 3)
 
-	cAddress1 := cleisthenes.Address{"127.0.0.1", 8080}
-	cAddress2 := cleisthenes.Address{"127.0.0.1", 8081}
-
-	mockStreamWrapper1 := mock.NewStreamWrapper()
-	conn1, err1 := cleisthenes.NewConnection(cAddress1, "TestConnection", mockStreamWrapper1)
-	if err1 != nil {
-		t.Fatal(err1)
+	for i, _ := range cAddressList {
+		cAddressList[i] = cleisthenes.Address{"127.0.0.1", GetAvailablePort(8000)}
 	}
 
-	mockStreamWrapper2 := mock.NewStreamWrapper()
-	conn2, err2 := cleisthenes.NewConnection(cAddress2, "TestConnection2", mockStreamWrapper2)
-	if err2 != nil {
-		t.Fatal(err2)
+	connList := make([]cleisthenes.Connection, 3)
+	var err error
+
+	for i := range connList {
+		connList[i], err = cleisthenes.NewConnection(cAddressList[i], "TestConnection"+strconv.Itoa(i+1), mock.NewStreamWrapper())
+		if err != nil {
+			// return error when error occurred at making connection
+			return err
+		}
 	}
 
-	cp.Add(conn1.Id(), conn1)
-	cp.Add(conn2.Id(), conn2)
+	for _, conn := range connList {
+		cp.Add(conn.Id(), conn)
+	}
 
-	var wg sync.WaitGroup
-	wg.Add(2)
+	return nil
+}
+
+func setUpHandler(textList []string, msgReceiveCheckList []bool, wg *sync.WaitGroup) (*MockHandler, error) {
+	var err error
 
 	mockHandler := NewMockHandler(nil)
 	mockHandler.ServeRequestFunc = func(msg cleisthenes.Message) {
 		if msg.GetRbc().Type != pb.RBC_VAL {
-			t.Fatalf("expected message type is %s, but got %s", pb.RBCType_name[int32(pb.RBC_VAL)], msg.GetRbc().Type)
+			err = errors.New("expected message type is " + string(pb.RBCType_name[int32(pb.RBC_VAL)]) + ", but got " + string(msg.GetRbc().Type))
 		}
-		if !bytes.Equal(msg.GetRbc().Payload, []byte("jang")) {
-			t.Fatalf("expected message payload is %s, but got %s", "jang", string(msg.GetRbc().Payload))
+
+		checkReceived := false
+		for i, text := range textList {
+			if bytes.Equal(msg.GetRbc().Payload, []byte(text)) {
+				msgReceiveCheckList[i] = true
+				checkReceived = true
+				wg.Done()
+			}
 		}
-		wg.Done()
+		if checkReceived == false {
+			err = errors.New("received message payload is " + string(msg.GetRbc().Payload) + ", which is not expected value")
+		}
 	}
-	conn1.Handle(mockHandler)
-	conn2.Handle(mockHandler)
 
-	go func() {
-		if err := conn1.Start(); err != nil {
-			conn1.Close()
-		}
-	}()
+	if err != nil {
+		// return error when error occurred at setting handler
+		return nil, err
+	}
 
-	go func() {
-		if err := conn2.Start(); err != nil {
-			conn2.Close()
-		}
-	}()
+	return mockHandler, nil
+}
+
+func handleMessage(cp *cleisthenes.ConnectionPool, textList []string, mockHandler *MockHandler) []pb.Message {
+	for _, conn := range cp.GetAll() {
+		conn.Handle(mockHandler)
+	}
+
+	for _, conn := range cp.GetAll() {
+		go func(conn cleisthenes.Connection) {
+			if err := conn.Start(); err != nil {
+				conn.Close()
+			}
+		}(conn)
+	}
 
 	time.Sleep(3 * time.Second)
 
-	msg := pb.Message{
-		Payload: &pb.Message_Rbc{
-			Rbc: &pb.RBC{
-				Payload: []byte("jang"),
-				Type:    pb.RBC_VAL,
+	msgList := make([]pb.Message, len(textList))
+	for i, _ := range msgList {
+		msgList[i] = pb.Message{
+			Payload: &pb.Message_Rbc{
+				Rbc: &pb.RBC{
+					Payload: []byte(textList[i]),
+					Type:    pb.RBC_VAL,
+				},
 			},
-		},
+		}
 	}
 
-	cp.Broadcast(msg)
+	return msgList
+}
+
+func executeDistributeMessage(textList []string, waitSize int) ([]bool, error) {
+	cp := cleisthenes.NewConnectionPool()
+
+	err := setUpConnection(cp)
+	if err != nil {
+		return nil, err
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(waitSize)
+
+	msgReceiveCheckList := make([]bool, len(textList))
+
+	mockHandler, err := setUpHandler(textList, msgReceiveCheckList, &wg)
+	if err != nil {
+		return nil, err
+	}
+
+	msgList := handleMessage(cp, textList, mockHandler)
+	cp.DistributeMessage(msgList)
+
+	// wait until receive the msg
+	wg.Wait()
+
+	return msgReceiveCheckList, nil
+}
+
+// Text case for ShareMessage with NodeNum = 3
+func TestConnectionPool_ShareMessage(t *testing.T) {
+	cp := cleisthenes.NewConnectionPool()
+	textList := []string{"jang"}
+
+	err := setUpConnection(cp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(3)
+
+	msgReceiveCheckList := make([]bool, len(textList))
+	mockHandler, err := setUpHandler(textList, msgReceiveCheckList, &wg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	msgList := handleMessage(cp, textList, mockHandler)
+	cp.ShareMessage(msgList[0])
 
 	// wait until receive the msg
 	wg.Wait()
 }
 
+// Test case for NodeNum == MessageNum (Both of them are 3) at DistributeMessage
+func TestConnectionPool_DistributeMessage_EqualNum(t *testing.T) {
+	textList := []string{"jang", "gun", "hee"}
+	msgReceiveCheckList, err := executeDistributeMessage(textList, 3)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i, check := range msgReceiveCheckList {
+		if check == false {
+			t.Fatalf("message payload %s has missed", textList[i])
+		}
+	}
+}
+
+// Test case for NodeNum < MessageNum (NodeNum is 3, MessageNum is 4) at DistributeMessage
+func TestConnectionPool_DistributeMessage_MessageNumBigger(t *testing.T) {
+	textList := []string{"jang", "gun", "hee", "kim"}
+	msgReceiveCheckList, err := executeDistributeMessage(textList, 3)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i, check := range msgReceiveCheckList {
+		if i == 3 {
+			break
+		}
+		if check == false {
+			t.Fatalf("message payload %s has missed", textList[i])
+		}
+	}
+}
+
+// Test case for NodeNum > MessageNum (NodeNum is 3, MessageNum is 2) at DistributeMessage
+func TestConnectionPool_DistributeMessage_NodeNumBigger(t *testing.T) {
+	textList := []string{"jang", "gun"}
+	msgReceiveCheckList, err := executeDistributeMessage(textList, 2)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i, check := range msgReceiveCheckList {
+		if check == false {
+			t.Fatalf("message payload %s has missed", textList[i])
+		}
+	}
+}
+
 func TestConnectionPool_Add(t *testing.T) {
-	cAddr := cleisthenes.Address{"127.0.0.1", 8080}
+	cAddr := cleisthenes.Address{"127.0.0.1", GetAvailablePort(8000)}
 	mockStreamWrapper := mock.NewStreamWrapper()
 	cp := cleisthenes.NewConnectionPool()
 
@@ -241,7 +381,7 @@ func TestConnectionPool_Add(t *testing.T) {
 }
 
 func TestConnectionPool_Remove(t *testing.T) {
-	cAddr := cleisthenes.Address{"127.0.0.1", 8080}
+	cAddr := cleisthenes.Address{"127.0.0.1", 8000}
 	mockStreamWrapper := mock.NewStreamWrapper()
 	cp := cleisthenes.NewConnectionPool()
 
