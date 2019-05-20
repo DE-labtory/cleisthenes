@@ -180,7 +180,11 @@ func (conn *GrpcConnection) readStream(errChan chan error) {
 }
 
 type Broadcaster interface {
-	Broadcast(msg pb.Message)
+	// ShareMessage is a function that broadcast Single message to all nodes
+	ShareMessage(msg pb.Message)
+
+	// DistributeMessage is a function that broadcast Multiple messages one by one to all nodes
+	DistributeMessage(msgList []pb.Message)
 }
 
 type ConnectionPool struct {
@@ -201,9 +205,18 @@ func (p *ConnectionPool) GetAll() []Connection {
 	return connList
 }
 
-func (p *ConnectionPool) Broadcast(msg pb.Message) {
+func (p *ConnectionPool) ShareMessage(msg pb.Message) {
 	for _, conn := range p.connMap {
 		conn.Send(msg, nil, nil)
+	}
+}
+
+func (p *ConnectionPool) DistributeMessage(msgList []pb.Message) {
+	for i, conn := range p.GetAll() {
+		if i == len(msgList) {
+			break
+		}
+		conn.Send(msgList[i], nil, nil)
 	}
 }
 
