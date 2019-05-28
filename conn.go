@@ -189,15 +189,20 @@ type Broadcaster interface {
 
 type ConnectionPool struct {
 	connMap map[ConnId]Connection
+	lock    sync.RWMutex
 }
 
 func NewConnectionPool() *ConnectionPool {
 	return &ConnectionPool{
 		connMap: make(map[ConnId]Connection),
+		lock:    sync.RWMutex{},
 	}
 }
 
 func (p *ConnectionPool) GetAll() []Connection {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
 	connList := make([]Connection, 0)
 	for _, conn := range p.connMap {
 		connList = append(connList, conn)
@@ -206,7 +211,10 @@ func (p *ConnectionPool) GetAll() []Connection {
 }
 
 func (p *ConnectionPool) ShareMessage(msg pb.Message) {
-	for _, conn := range p.connMap {
+	p.lock.Lock()
+	defer p.lock.Unlock()
+
+	for _, conn := range p.GetAll() {
 		conn.Send(msg, nil, nil)
 	}
 }

@@ -381,7 +381,7 @@ func TestConnectionPool_Add(t *testing.T) {
 }
 
 func TestConnectionPool_Remove(t *testing.T) {
-	cAddr := cleisthenes.Address{"127.0.0.1", 8000}
+	cAddr := cleisthenes.Address{"127.0.0.1", GetAvailablePort(8000)}
 	mockStreamWrapper := mock.NewStreamWrapper()
 	cp := cleisthenes.NewConnectionPool()
 
