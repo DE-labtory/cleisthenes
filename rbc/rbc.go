@@ -44,24 +44,24 @@ func (rbc *RBC) broadcast(msg *pb.Message) error {
 }
 
 // HandleMessage will used in ACS
-func (rbc *RBC) HandleMessage(senderId cleisthenes.ConnId, msg *pb.Message) error {
+func (rbc *RBC) HandleMessage(sender cleisthenes.Member, msg *pb.Message) error {
 	panic("implement me w/ test case :-)")
 }
 
 // handleMessage will distinguish input message (from ACS)
-func (rbc *RBC) handleMessage(senderId cleisthenes.ConnId, msg *pb.Message) error {
+func (rbc *RBC) handleMessage(sender cleisthenes.Member, msg *pb.Message) error {
 	panic("implement me w/ test case :-)")
 }
 
-func (rbc *RBC) handleValueRequest(senderId cleisthenes.ConnId, req ValRequest) error {
+func (rbc *RBC) handleValueRequest(sender cleisthenes.Address, req ValRequest) error {
 	panic("implement me w/ test case :-)")
 }
 
-func (rbc *RBC) handleEchoRequest(senderId cleisthenes.ConnId, req EchoRequest) error {
+func (rbc *RBC) handleEchoRequest(sender cleisthenes.Address, req EchoRequest) error {
 	panic("implement me w/ test case :-)")
 }
 
-func (rbc *RBC) handleReadyRequest(senderId cleisthenes.ConnId, req ReadyRequest) error {
+func (rbc *RBC) handleReadyRequest(sender cleisthenes.Address, req ReadyRequest) error {
 	panic("implement me w/ test case :-)")
 }
 

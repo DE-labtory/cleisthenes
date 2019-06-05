@@ -19,9 +19,9 @@ const (
 )
 
 type request struct {
-	id   cleisthenes.ConnId
-	data cleisthenes.Request
-	err  chan error
+	sender cleisthenes.Member
+	data   cleisthenes.Request
+	err    chan error
 }
 
 type BBA struct {
@@ -71,7 +71,7 @@ func (b *BBA) HandleInput(val Binary) error {
 }
 
 // HandleMessage will process the given rpc message.
-func (b *BBA) HandleMessage(id cleisthenes.ConnId, msg *pb.Message_Bba) error {
+func (b *BBA) HandleMessage(sender cleisthenes.Member, msg *pb.Message_Bba) error {
 	return nil
 }
 

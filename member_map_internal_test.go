@@ -22,22 +22,31 @@ import (
 )
 
 func TestMemberMap_Add(t *testing.T) {
+	addr := Address{
+		Ip:   "localhost",
+		Port: 8000,
+	}
+
 	memberMap := NewMemberMap()
+	memberMap.Add(newDummyMember(addr))
 
-	memberMap.Add(newDummyMember("memberId"))
-
-	if !reflect.DeepEqual(*memberMap.members["memberId"], *newDummyMember("memberId")) {
-		t.Fatalf("two member are not equal. got=%v+x, expected=%v+x", memberMap.members["memberId"], *newDummyMember("memberId"))
+	if !reflect.DeepEqual(*memberMap.members[addr], *newDummyMember(addr)) {
+		t.Fatalf("two member are not equal. got=%v+x, expected=%v+x", memberMap.members[addr], *newDummyMember(addr))
 	}
 }
 
 func TestMemberMap_Del(t *testing.T) {
+	addr := Address{
+		Ip:   "localhost",
+		Port: 8000,
+	}
+
 	memberMap := NewMemberMap()
-	memberMap.members["memberId"] = newDummyMember("memberId")
+	memberMap.members[addr] = newDummyMember(addr)
 
-	memberMap.Del("memberId")
+	memberMap.Del(addr)
 
-	_, ok := memberMap.members["memberId"]
+	_, ok := memberMap.members[addr]
 	if ok {
 		t.Fatalf("deleted member exists")
 	}
@@ -48,37 +57,47 @@ func TestMemberMap_Del(t *testing.T) {
 }
 
 func TestMemberMap_Member(t *testing.T) {
-	memberMap := NewMemberMap()
-	memberMap.members["memberId"] = newDummyMember("memberId")
+	addr := Address{
+		Ip:   "localhost",
+		Port: 8000,
+	}
 
-	member := memberMap.Member("memberId")
-	if !reflect.DeepEqual(member, *newDummyMember("memberId")) {
-		t.Fatalf("two member are not equal. got=%v+x, expected=%v+x", memberMap.members["memberId"], *newDummyMember("memberId"))
+	memberMap := NewMemberMap()
+	memberMap.members[addr] = newDummyMember(addr)
+
+	member := memberMap.Member(addr)
+	if !reflect.DeepEqual(member, *newDummyMember(addr)) {
+		t.Fatalf("two member are not equal. got=%v+x, expected=%v+x", memberMap.members[addr], *newDummyMember(addr))
 	}
 }
 
 func TestMemberMap_Members(t *testing.T) {
+	addr := Address{
+		Ip:   "localhost",
+		Port: 8000,
+	}
+	addr2 := Address{
+		Ip:   "localhost",
+		Port: 8001,
+	}
+
 	memberMap := NewMemberMap()
-	memberMap.members["memberId1"] = newDummyMember("memberId1")
-	memberMap.members["memberId2"] = newDummyMember("memberId2")
+	memberMap.members[addr] = newDummyMember(addr)
+	memberMap.members[addr2] = newDummyMember(addr2)
 
 	if len(memberMap.Members()) != 2 {
 		t.Fatalf("size of membermap is not 2. got=%d", len(memberMap.Members()))
 	}
 
 	for _, member := range memberMap.Members() {
-		if !reflect.DeepEqual(*memberMap.members[member.Id], member) {
-			t.Fatalf("two member are not equal. got=%v+x, expected=%v+x", *memberMap.members[member.Id], member)
+		if !reflect.DeepEqual(*memberMap.members[member.Address], member) {
+			t.Fatalf("two member are not equal. got=%v+x, expected=%v+x", *memberMap.members[member.Address], member)
 		}
 	}
 }
 
-func newDummyMember(memberId string) *Member {
+func newDummyMember(addr Address) *Member {
 	return &Member{
-		Id: memberId,
-		Addr: Address{
-			Ip:   "localhost",
-			Port: 8080,
-		},
+		Address: addr,
 	}
 }
