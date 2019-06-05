@@ -2,14 +2,15 @@ package cleisthenes_test
 
 import (
 	"bytes"
-	"errors"
+	"encoding/json"
+	"fmt"
+	"math"
 	"net"
 	"reflect"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/DE-labtory/cleisthenes"
 	"github.com/DE-labtory/cleisthenes/pb"
@@ -152,192 +153,251 @@ func TestGrpcConnection_Close(t *testing.T) {
 	wg.Wait()
 }
 
-func setUpConnection(cp *cleisthenes.ConnectionPool) error {
-	cAddressList := make([]cleisthenes.Address, 3)
+type samplePayload struct {
+	Data string
+	Id   int
+}
 
-	for i, _ := range cAddressList {
-		cAddressList[i] = cleisthenes.Address{"127.0.0.1", GetAvailablePort(8000)}
+type messageRecvChecker struct {
+	lock      sync.RWMutex
+	checkList []bool
+}
+
+func newMessageRecvChecker(checkSize int) *messageRecvChecker {
+	return &messageRecvChecker{
+		lock:      sync.RWMutex{},
+		checkList: make([]bool, checkSize),
 	}
+}
 
-	connList := make([]cleisthenes.Connection, 3)
-	var err error
+func (m *messageRecvChecker) check(i int) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	m.checkList[i] = true
+}
 
-	for i := range connList {
-		connList[i], err = cleisthenes.NewConnection(cAddressList[i], "TestConnection"+strconv.Itoa(i+1), mock.NewStreamWrapper())
+func (m *messageRecvChecker) result() []bool {
+	return m.checkList
+}
+
+type messageRecvCounter struct {
+	lock    sync.RWMutex
+	counter int
+}
+
+func newMessageRecvCounter() *messageRecvCounter {
+	return &messageRecvCounter{
+		lock: sync.RWMutex{},
+	}
+}
+
+func (m *messageRecvCounter) count() {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	m.counter++
+}
+
+func (m *messageRecvCounter) result() int {
+	return m.counter
+}
+
+type connectionTester struct {
+	connListSize   int
+	msgRecvChecker *messageRecvChecker
+	msgRecvCounter *messageRecvCounter
+}
+
+func newConnectionTester(connListSize int) *connectionTester {
+	return &connectionTester{
+		connListSize:   connListSize,
+		msgRecvChecker: newMessageRecvChecker(connListSize),
+		msgRecvCounter: newMessageRecvCounter(),
+	}
+}
+
+func (c *connectionTester) setupConnectionPool() (*cleisthenes.ConnectionPool, error) {
+	connPool := cleisthenes.NewConnectionPool()
+	for i := 0; i < c.connListSize; i++ {
+		addr := cleisthenes.Address{"127.0.0.1", GetAvailablePort(8000)}
+		conn, err := cleisthenes.NewConnection(addr, "TestConnection"+strconv.Itoa(i+1), mock.NewStreamWrapper())
 		if err != nil {
-			// return error when error occurred at making connection
-			return err
+			return nil, err
 		}
-	}
 
-	for _, conn := range connList {
-		cp.Add(conn.Id(), conn)
+		connPool.Add(conn.Id(), conn)
 	}
-
-	return nil
+	return connPool, nil
 }
 
-func setUpHandler(textList []string, msgReceiveCheckList []bool, wg *sync.WaitGroup) (*MockHandler, error) {
-	var err error
-
+func (c *connectionTester) setupHandler(servRequestFunc func(message cleisthenes.Message)) *MockHandler {
 	mockHandler := NewMockHandler(nil)
-	mockHandler.ServeRequestFunc = func(msg cleisthenes.Message) {
-		if msg.GetRbc().Type != pb.RBC_VAL {
-			err = errors.New("expected message type is " + string(pb.RBCType_name[int32(pb.RBC_VAL)]) + ", but got " + string(msg.GetRbc().Type))
-		}
-
-		checkReceived := false
-		for i, text := range textList {
-			if bytes.Equal(msg.GetRbc().Payload, []byte(text)) {
-				msgReceiveCheckList[i] = true
-				checkReceived = true
-				wg.Done()
-			}
-		}
-		if checkReceived == false {
-			err = errors.New("received message payload is " + string(msg.GetRbc().Payload) + ", which is not expected value")
-		}
-	}
-
-	if err != nil {
-		// return error when error occurred at setting handler
-		return nil, err
-	}
-
-	return mockHandler, nil
+	mockHandler.ServeRequestFunc = servRequestFunc
+	return mockHandler
 }
 
-func handleMessage(cp *cleisthenes.ConnectionPool, textList []string, mockHandler *MockHandler) []pb.Message {
-	for _, conn := range cp.GetAll() {
-		conn.Handle(mockHandler)
+func (c *connectionTester) run(connPool *cleisthenes.ConnectionPool, handler *MockHandler) {
+	for _, conn := range connPool.GetAll() {
+		conn.Handle(handler)
 	}
 
-	for _, conn := range cp.GetAll() {
+	for _, conn := range connPool.GetAll() {
 		go func(conn cleisthenes.Connection) {
 			if err := conn.Start(); err != nil {
 				conn.Close()
 			}
 		}(conn)
 	}
+}
 
-	time.Sleep(3 * time.Second)
+func (c *connectionTester) checkResult() []bool {
+	return c.msgRecvChecker.result()
+}
+
+func (c *connectionTester) countResult() int {
+	return c.msgRecvCounter.result()
+}
+
+func executeDistributeMessage(t *testing.T, textList []string, connListSize int) []bool {
+	wg := &sync.WaitGroup{}
+	wg.Add(int(math.Min(float64(len(textList)), float64(connListSize))))
+
+	tester := newConnectionTester(connListSize)
+	connPool, err := tester.setupConnectionPool()
+	if err != nil {
+		t.Fatalf("failed to setup connection pool: err=%s", err)
+	}
+	handler := tester.setupHandler(func(msg cleisthenes.Message) {
+		if msg.GetRbc().Type != pb.RBC_VAL {
+			t.Fatalf(fmt.Sprintf("expected message type is %s, but got %s", string(pb.RBCType_name[int32(pb.RBC_VAL)]), string(msg.GetRbc().Type)))
+		}
+		payload := &samplePayload{}
+		if err := json.Unmarshal(msg.GetRbc().Payload, payload); err != nil {
+			t.Fatalf("failed to unmarshal payload: err=%s", err)
+		}
+
+		if payload.Data != textList[payload.Id] {
+			t.Fatalf(fmt.Sprintf("expected message is %s, but got %s", textList[payload.Id], payload.Data))
+		}
+
+		tester.msgRecvChecker.check(payload.Id)
+
+		wg.Done()
+	})
+
+	tester.run(connPool, handler)
 
 	msgList := make([]pb.Message, len(textList))
 	for i, _ := range msgList {
+		payload := &samplePayload{
+			Data: textList[i],
+			Id:   i,
+		}
+		data, err := json.Marshal(payload)
+		if err != nil {
+			t.Fatalf("failed to marshal sample payload: err=%s", err)
+		}
 		msgList[i] = pb.Message{
 			Payload: &pb.Message_Rbc{
 				Rbc: &pb.RBC{
-					Payload: []byte(textList[i]),
+					Payload: data,
 					Type:    pb.RBC_VAL,
 				},
 			},
 		}
 	}
 
-	return msgList
-}
+	connPool.DistributeMessage(msgList)
 
-func executeDistributeMessage(textList []string, waitSize int) ([]bool, error) {
-	cp := cleisthenes.NewConnectionPool()
-
-	err := setUpConnection(cp)
-	if err != nil {
-		return nil, err
-	}
-
-	var wg sync.WaitGroup
-	wg.Add(waitSize)
-
-	msgReceiveCheckList := make([]bool, len(textList))
-
-	mockHandler, err := setUpHandler(textList, msgReceiveCheckList, &wg)
-	if err != nil {
-		return nil, err
-	}
-
-	msgList := handleMessage(cp, textList, mockHandler)
-	cp.DistributeMessage(msgList)
-
-	// wait until receive the msg
 	wg.Wait()
 
-	return msgReceiveCheckList, nil
+	return tester.checkResult()
+}
+
+func executeShareMessage(t *testing.T, text string, connListSize int) int {
+	wg := &sync.WaitGroup{}
+	wg.Add(connListSize)
+
+	tester := newConnectionTester(connListSize)
+	connPool, err := tester.setupConnectionPool()
+	if err != nil {
+		t.Fatalf("failed to setup connection pool: err=%s", err)
+	}
+	handler := tester.setupHandler(func(msg cleisthenes.Message) {
+		if !bytes.Equal(msg.GetRbc().Payload, []byte(text)) {
+			t.Fatalf("expected message payload is %s, but got %s", msg.GetRbc().Payload, []byte(text))
+		}
+		tester.msgRecvCounter.count()
+		wg.Done()
+	})
+
+	tester.run(connPool, handler)
+
+	connPool.ShareMessage(pb.Message{
+		Payload: &pb.Message_Rbc{
+			Rbc: &pb.RBC{
+				Payload: []byte(text),
+				Type:    pb.RBC_VAL,
+			},
+		},
+	})
+
+	wg.Wait()
+	return tester.countResult()
 }
 
 // Text case for ShareMessage with NodeNum = 3
 func TestConnectionPool_ShareMessage(t *testing.T) {
-	cp := cleisthenes.NewConnectionPool()
-	textList := []string{"jang"}
-
-	err := setUpConnection(cp)
-	if err != nil {
-		t.Fatal(err)
+	result := executeShareMessage(t, "jang", 3)
+	if result != 3 {
+		t.Fatalf("expected result is %d, but got %d", 3, result)
 	}
-
-	var wg sync.WaitGroup
-	wg.Add(3)
-
-	msgReceiveCheckList := make([]bool, len(textList))
-	mockHandler, err := setUpHandler(textList, msgReceiveCheckList, &wg)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	msgList := handleMessage(cp, textList, mockHandler)
-	cp.ShareMessage(msgList[0])
-
-	// wait until receive the msg
-	wg.Wait()
 }
 
 // Test case for NodeNum == MessageNum (Both of them are 3) at DistributeMessage
 func TestConnectionPool_DistributeMessage_EqualNum(t *testing.T) {
 	textList := []string{"jang", "gun", "hee"}
-	msgReceiveCheckList, err := executeDistributeMessage(textList, 3)
+	result := executeDistributeMessage(t, textList, 3)
 
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for i, check := range msgReceiveCheckList {
-		if check == false {
-			t.Fatalf("message payload %s has missed", textList[i])
+	trueCount := 0
+	for _, check := range result {
+		if check {
+			trueCount++
 		}
+	}
+	if trueCount != 3 {
+		t.Fatalf("expected trueCount is %d, but got %d", 3, trueCount)
 	}
 }
 
 // Test case for NodeNum < MessageNum (NodeNum is 3, MessageNum is 4) at DistributeMessage
 func TestConnectionPool_DistributeMessage_MessageNumBigger(t *testing.T) {
 	textList := []string{"jang", "gun", "hee", "kim"}
-	msgReceiveCheckList, err := executeDistributeMessage(textList, 3)
+	result := executeDistributeMessage(t, textList, 3)
 
-	if err != nil {
-		t.Fatal(err)
+	trueCount := 0
+	for _, check := range result {
+		if check {
+			trueCount++
+		}
 	}
-
-	for i, check := range msgReceiveCheckList {
-		if i == 3 {
-			break
-		}
-		if check == false {
-			t.Fatalf("message payload %s has missed", textList[i])
-		}
+	if trueCount != 3 {
+		t.Fatalf("expected trueCount is %d, but got %d", 3, trueCount)
 	}
 }
 
 // Test case for NodeNum > MessageNum (NodeNum is 3, MessageNum is 2) at DistributeMessage
 func TestConnectionPool_DistributeMessage_NodeNumBigger(t *testing.T) {
 	textList := []string{"jang", "gun"}
-	msgReceiveCheckList, err := executeDistributeMessage(textList, 2)
+	result := executeDistributeMessage(t, textList, 3)
 
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for i, check := range msgReceiveCheckList {
-		if check == false {
-			t.Fatalf("message payload %s has missed", textList[i])
+	trueCount := 0
+	for _, check := range result {
+		if check {
+			trueCount++
 		}
+	}
+	if trueCount != len(textList) {
+		t.Fatalf("expected trueCount is %d, but got %d", 3, trueCount)
 	}
 }
 
