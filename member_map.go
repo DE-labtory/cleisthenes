@@ -2,12 +2,8 @@ package cleisthenes
 
 import (
 	"fmt"
-	"net"
-	"strconv"
 	"sync"
 )
-
-type MemberId = string
 
 type Address struct {
 	Ip   string
@@ -20,34 +16,24 @@ func (a Address) String() string {
 
 // Member contains node information who participate in the network
 type Member struct {
-	Id   MemberId
-	Addr Address
+	Address Address
 }
 
-func NewMember(id string, host string, port uint16) *Member {
+func NewMember(host string, port uint16) *Member {
 	return &Member{
-		Id: id,
-		Addr: Address{
-			Ip:   host,
-			Port: port,
-		},
+		Address: Address{Ip: host, Port: port},
 	}
-}
-
-// Address return member's host and port into string
-func (m *Member) Address() string {
-	return net.JoinHostPort(m.Addr.Ip, strconv.Itoa(int(m.Addr.Port)))
 }
 
 // MemberMap manages members information
 type MemberMap struct {
 	lock    sync.RWMutex
-	members map[MemberId]*Member
+	members map[Address]*Member
 }
 
 func NewMemberMap() *MemberMap {
 	return &MemberMap{
-		members: make(map[MemberId]*Member),
+		members: make(map[Address]*Member),
 		lock:    sync.RWMutex{},
 	}
 }
@@ -65,23 +51,23 @@ func (m *MemberMap) Members() []Member {
 	return members
 }
 
-func (m *MemberMap) Member(id MemberId) Member {
+func (m *MemberMap) Member(addr Address) Member {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
-	return *m.members[id]
+	return *m.members[addr]
 }
 
 func (m *MemberMap) Add(member *Member) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
-	m.members[member.Id] = member
+	m.members[member.Address] = member
 }
 
-func (m *MemberMap) Del(id MemberId) {
+func (m *MemberMap) Del(addr Address) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
-	delete(m.members, id)
+	delete(m.members, addr)
 }

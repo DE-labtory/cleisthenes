@@ -36,26 +36,26 @@ func (r ReadyRequest) Recv() {}
 type (
 	ValReqRepository struct {
 		lock sync.RWMutex
-		recv map[cleisthenes.ConnId]*ValRequest
+		recv map[cleisthenes.Address]*ValRequest
 	}
 
 	EchoReqRepository struct {
 		lock sync.RWMutex
-		recv map[cleisthenes.ConnId]*EchoRequest
+		recv map[cleisthenes.Address]*EchoRequest
 	}
 
 	ReadyReqRepository struct {
 		lock sync.RWMutex
-		recv map[cleisthenes.ConnId]*ReadyRequest
+		recv map[cleisthenes.Address]*ReadyRequest
 	}
 )
 
 type (
 	// InnerMessage used in channel when received message
 	InnerMessage struct {
-		senderId cleisthenes.ConnId
-		msg      *pb.Message
-		err      error
+		sender cleisthenes.Member
+		msg    *pb.Message
+		err    error
 	}
 
 	// InnerRequest used in channel when send messages
@@ -65,7 +65,7 @@ type (
 	}
 )
 
-func (r *EchoReqRepository) Save(connId cleisthenes.ConnId, req cleisthenes.Request) error {
+func (r *EchoReqRepository) Save(addr cleisthenes.Address, req cleisthenes.Request) error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
@@ -73,18 +73,18 @@ func (r *EchoReqRepository) Save(connId cleisthenes.ConnId, req cleisthenes.Requ
 	if !ok {
 		return ErrInvalidReqType
 	}
-	r.recv[connId] = echoReq
+	r.recv[addr] = echoReq
 	return nil
 }
-func (r *EchoReqRepository) Find(connId cleisthenes.ConnId) (cleisthenes.Request, error) {
+func (r *EchoReqRepository) Find(addr cleisthenes.Address) (cleisthenes.Request, error) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
-	_, ok := r.recv[connId]
+	_, ok := r.recv[addr]
 	if !ok {
 		return nil, ErrNoIdMatchingRequest
 	}
-	return r.recv[connId], nil
+	return r.recv[addr], nil
 
 }
 func (r *EchoReqRepository) FindAll() []cleisthenes.Request {
@@ -100,11 +100,11 @@ func (r *EchoReqRepository) FindAll() []cleisthenes.Request {
 func NewEchoReqRepository() (*EchoReqRepository, error) {
 
 	return &EchoReqRepository{
-		recv: make(map[cleisthenes.ConnId]*EchoRequest),
+		recv: make(map[cleisthenes.Address]*EchoRequest),
 		lock: sync.RWMutex{},
 	}, nil
 }
-func (r *ValReqRepository) Save(connId cleisthenes.ConnId, req cleisthenes.Request) error {
+func (r *ValReqRepository) Save(addr cleisthenes.Address, req cleisthenes.Request) error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
@@ -112,18 +112,18 @@ func (r *ValReqRepository) Save(connId cleisthenes.ConnId, req cleisthenes.Reque
 	if !ok {
 		return ErrInvalidReqType
 	}
-	r.recv[connId] = valReq
+	r.recv[addr] = valReq
 	return nil
 }
-func (r *ValReqRepository) Find(connId cleisthenes.ConnId) (cleisthenes.Request, error) {
+func (r *ValReqRepository) Find(addr cleisthenes.Address) (cleisthenes.Request, error) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
-	_, ok := r.recv[connId]
+	_, ok := r.recv[addr]
 	if !ok {
 		return nil, ErrNoIdMatchingRequest
 	}
-	return r.recv[connId], nil
+	return r.recv[addr], nil
 
 }
 func (r *ValReqRepository) FindAll() []cleisthenes.Request {
@@ -137,12 +137,12 @@ func (r *ValReqRepository) FindAll() []cleisthenes.Request {
 }
 func NewValReqRepository() (*ValReqRepository, error) {
 	return &ValReqRepository{
-		recv: make(map[cleisthenes.ConnId]*ValRequest),
+		recv: make(map[cleisthenes.Address]*ValRequest),
 		lock: sync.RWMutex{},
 	}, nil
 }
 
-func (r *ReadyReqRepository) Save(connId cleisthenes.ConnId, req cleisthenes.Request) error {
+func (r *ReadyReqRepository) Save(addr cleisthenes.Address, req cleisthenes.Request) error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
@@ -150,18 +150,18 @@ func (r *ReadyReqRepository) Save(connId cleisthenes.ConnId, req cleisthenes.Req
 	if !ok {
 		return ErrInvalidReqType
 	}
-	r.recv[connId] = readyReq
+	r.recv[addr] = readyReq
 	return nil
 }
-func (r *ReadyReqRepository) Find(connId cleisthenes.ConnId) (cleisthenes.Request, error) {
+func (r *ReadyReqRepository) Find(addr cleisthenes.Address) (cleisthenes.Request, error) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
-	_, ok := r.recv[connId]
+	_, ok := r.recv[addr]
 	if !ok {
 		return nil, ErrNoIdMatchingRequest
 	}
-	return r.recv[connId], nil
+	return r.recv[addr], nil
 
 }
 func (r *ReadyReqRepository) FindAll() []cleisthenes.Request {
@@ -176,7 +176,7 @@ func (r *ReadyReqRepository) FindAll() []cleisthenes.Request {
 }
 func NewReadyReqRepository() (*ReadyReqRepository, error) {
 	return &ReadyReqRepository{
-		recv: make(map[cleisthenes.ConnId]*ReadyRequest),
+		recv: make(map[cleisthenes.Address]*ReadyRequest),
 		lock: sync.RWMutex{},
 	}, nil
 }

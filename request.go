@@ -5,13 +5,13 @@ type Request interface {
 }
 
 type RequestRepository interface {
-	Save(connId ConnId, req Request) error
-	Find(connId ConnId) (Request, error)
+	Save(addr Address, req Request) error
+	Find(addr Address) (Request, error)
 	FindAll() []Request
 }
 
 type IncomingRequestRepository interface {
-	Save(epoch int, connId ConnId, req Request) error
-	Find(epoch int, connId ConnId) Request
+	Save(epoch int, addr Address, req Request) error
+	Find(epoch int, addr Address) Request
 	FindByEpoch(epoch int) []Request
 }
