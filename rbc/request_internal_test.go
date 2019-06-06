@@ -15,7 +15,7 @@ func TestValReqRepository_Find(t *testing.T) {
 		Port: 8000,
 	}
 
-	valReqList, _ := NewValReqRepository()
+	valReqList := NewValReqRepository()
 	val := ValRequest{nil, merkletree.Data{}, nil, nil}
 	valReqList.Save(addr, &val)
 	_, ok := valReqList.Find(addr)
@@ -23,6 +23,7 @@ func TestValReqRepository_Find(t *testing.T) {
 		t.Fatalf("request %v is not found.", valReqList.recv[addr])
 	}
 }
+
 func TestValReqRepository_FindAll(t *testing.T) {
 	addr := cleisthenes.Address{
 		Ip:   "localhost",
@@ -33,7 +34,7 @@ func TestValReqRepository_FindAll(t *testing.T) {
 		Port: 8001,
 	}
 
-	valReqList, _ := NewValReqRepository()
+	valReqList := NewValReqRepository()
 	val := ValRequest{nil, merkletree.Data{}, nil, nil}
 	valReqList.Save(addr, &val)
 	valReqList.Save(addr2, &val)
@@ -48,13 +49,14 @@ func TestValReqRepository_FindAll(t *testing.T) {
 		}
 	}
 }
+
 func TestValReqRepository_Save(t *testing.T) {
 	addr := cleisthenes.Address{
 		Ip:   "localhost",
 		Port: 8000,
 	}
 
-	valReqList, _ := NewValReqRepository()
+	valReqList := NewValReqRepository()
 	val := ValRequest{nil, merkletree.Data{}, nil, nil}
 	valReqList.Save(addr, &val)
 	_, ok := valReqList.recv[addr]
@@ -62,25 +64,14 @@ func TestValReqRepository_Save(t *testing.T) {
 		t.Fatalf("request %v is not saved", valReqList.recv[addr])
 	}
 }
-func TestValReqRepository_NewValReqRepository(t *testing.T) {
-	_, err := NewValReqRepository()
-	if err != nil {
-		t.Fatalf("val request repository is not created.")
-	}
-}
-func TestNewEchoReqRepository(t *testing.T) {
-	_, err := NewEchoReqRepository()
-	if err != nil {
-		t.Fatalf("echo requst repository is not created.")
-	}
-}
+
 func TestEchoReqRepository_Find(t *testing.T) {
 	addr := cleisthenes.Address{
 		Ip:   "localhost",
 		Port: 8000,
 	}
 
-	echoReqList, _ := NewEchoReqRepository()
+	echoReqList := NewEchoReqRepository()
 	val := ValRequest{nil, merkletree.NewData(nil), nil, nil}
 	echo := EchoRequest{val}
 	echoReqList.Save(addr, &echo)
@@ -90,6 +81,7 @@ func TestEchoReqRepository_Find(t *testing.T) {
 	}
 
 }
+
 func TestEchoReqRepository_FindAll(t *testing.T) {
 	addr := cleisthenes.Address{
 		Ip:   "localhost",
@@ -100,7 +92,7 @@ func TestEchoReqRepository_FindAll(t *testing.T) {
 		Port: 8001,
 	}
 
-	echoReqList, _ := NewEchoReqRepository()
+	echoReqList := NewEchoReqRepository()
 	val := ValRequest{nil, merkletree.NewData(nil), nil, nil}
 	echo := EchoRequest{val}
 	echoReqList.Save(addr, &echo)
@@ -115,13 +107,14 @@ func TestEchoReqRepository_FindAll(t *testing.T) {
 		}
 	}
 }
+
 func TestEchoReqRepository_Save(t *testing.T) {
 	addr := cleisthenes.Address{
 		Ip:   "localhost",
 		Port: 8000,
 	}
 
-	echoReqList, _ := NewEchoReqRepository()
+	echoReqList := NewEchoReqRepository()
 	val := ValRequest{nil, merkletree.NewData(nil), nil, nil}
 	echo := EchoRequest{val}
 	echoReqList.Save(addr, &echo)
@@ -130,13 +123,7 @@ func TestEchoReqRepository_Save(t *testing.T) {
 		t.Fatalf("request %v is not saved", echoReqList.recv[addr])
 	}
 }
-func TestNewReadyReqRepository(t *testing.T) {
-	_, err := NewReadyReqRepository()
-	if err != nil {
-		t.Fatalf("ready request repository is not created.")
-	}
 
-}
 func TestReadyReqRepository_FindAll(t *testing.T) {
 	addr := cleisthenes.Address{
 		Ip:   "localhost",
@@ -147,7 +134,7 @@ func TestReadyReqRepository_FindAll(t *testing.T) {
 		Port: 8001,
 	}
 
-	readyReqList, _ := NewReadyReqRepository()
+	readyReqList := NewReadyReqRepository()
 	ready := ReadyRequest{nil}
 	readyReqList.Save(addr, &ready)
 	readyReqList.Save(addr2, &ready)
@@ -162,13 +149,14 @@ func TestReadyReqRepository_FindAll(t *testing.T) {
 	}
 
 }
+
 func TestReadyReqRepository_Save(t *testing.T) {
 	addr := cleisthenes.Address{
 		Ip:   "localhost",
 		Port: 8000,
 	}
 
-	readyReqList, _ := NewReadyReqRepository()
+	readyReqList := NewReadyReqRepository()
 	ready := ReadyRequest{nil}
 	readyReqList.Save(addr, &ready)
 	_, ok := readyReqList.recv[addr]
@@ -177,13 +165,14 @@ func TestReadyReqRepository_Save(t *testing.T) {
 	}
 
 }
+
 func TestReadyReqRepository_Find(t *testing.T) {
 	addr := cleisthenes.Address{
 		Ip:   "localhost",
 		Port: 8000,
 	}
 
-	readyReqList, _ := NewReadyReqRepository()
+	readyReqList := NewReadyReqRepository()
 	ready := ReadyRequest{nil}
 	readyReqList.Save(addr, &ready)
 	_, ok := readyReqList.Find(addr)
