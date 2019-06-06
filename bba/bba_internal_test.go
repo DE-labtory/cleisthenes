@@ -49,7 +49,7 @@ func (h *bbaTester) setupAuxRequestList(bvalList []*auxRequest) ([]request, erro
 			return nil, err
 		}
 		result = append(result, request{
-			sender: cleisthenes.Member{Address: cleisthenes.Address{Ip: "my.node." + strconv.Itoa(i), Port: 8080}},
+			sender: cleisthenes.Member{Address: cleisthenes.Address{Ip: "localhost" + strconv.Itoa(i), Port: 8080}},
 			data: &pb.Message_Bba{
 				Bba: &pb.BBA{
 					Type:    pb.BBA_AUX,
