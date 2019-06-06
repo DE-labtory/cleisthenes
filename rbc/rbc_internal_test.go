@@ -2,16 +2,70 @@ package rbc
 
 import (
 	"bytes"
+	"encoding/json"
+	"reflect"
 	"testing"
 
 	"github.com/DE-labtory/cleisthenes/rbc/merkletree"
 
 	"github.com/DE-labtory/cleisthenes"
+	"github.com/DE-labtory/cleisthenes/pb"
+	"github.com/DE-labtory/cleisthenes/test/mock"
+
 	"github.com/klauspost/reedsolomon"
 )
 
+type mockNode struct {
+	owner   cleisthenes.Member
+	rbcList []*RBC
+}
+
+func setUpMockNode(t *testing.T, n int, f int, owner cleisthenes.Member, memberMap *cleisthenes.MemberMap) *mockNode {
+	connMemberMap := cleisthenes.NewMemberMap()
+	for _, member := range memberMap.Members() {
+		if !reflect.DeepEqual(member, owner) {
+			connMemberMap.Add(&member)
+		}
+	}
+
+	bc := setUpMockBC(t, connMemberMap)
+
+	rbcList := make([]*RBC, 0)
+	for _, member := range memberMap.Members() {
+		rbc := New(n, f, owner, member, nil)
+		rbc.broadcaster = bc
+		rbcList = append(rbcList, rbc)
+	}
+
+	return &mockNode{
+		owner:   owner,
+		rbcList: rbcList,
+	}
+}
+
+func setUpMockBC(t *testing.T, memberMap *cleisthenes.MemberMap) *mock.Broadcaster {
+	bc := &mock.Broadcaster{
+		ConnMap:                make(map[cleisthenes.Address]mock.Connection),
+		BroadcastedMessageList: make([]pb.Message, 0),
+	}
+
+	for _, member := range memberMap.Members() {
+		conn := mock.Connection{
+			ConnId: member.Address.String(),
+		}
+
+		conn.SendFunc = func(msg pb.Message, successCallBack func(interface{}), errCallBack func(error)) {
+			bc.BroadcastedMessageList = append(bc.BroadcastedMessageList, msg)
+		}
+
+		bc.ConnMap[member.Address] = conn
+	}
+
+	return bc
+}
+
 func setUpValReqList(t *testing.T, n int, f int, data []byte) []*ValRequest {
-	enc, err := reedsolomon.New(n-f, f)
+	enc, err := reedsolomon.New(n-2*f, 2*f)
 	if err != nil {
 		t.Fatalf("error in reedsolomon : %s", err.Error())
 	}
@@ -47,13 +101,114 @@ func setUpValReqList(t *testing.T, n int, f int, data []byte) []*ValRequest {
 	return valReqList
 }
 
+// scenario
+// 4 rbc instances
+// shard data with 4
+// send each node sharded data as VALUE request
+// each node handle message
+func Test_RBC_handleValueRequest(t *testing.T) {
+	var n int = 4
+	var f int = 1
+
+	data := []byte("this will be sharded")
+	valReqList := setUpValReqList(t, n, f, data)
+
+	rbcList := make([]*RBC, 0)
+	bcList := make([]*mock.Broadcaster, 0)
+
+	for idx := 0; idx < n; idx++ {
+		ownAddr := cleisthenes.Address{
+			Ip:   "127.0.0.1",
+			Port: uint16(8000 + idx),
+		}
+
+		memberMap := cleisthenes.NewMemberMap()
+		owner := cleisthenes.NewMember(ownAddr.Ip, ownAddr.Port)
+		memberMap.Add(owner)
+		bc := setUpMockBC(t, memberMap)
+
+		rbc := New(n, f, *owner, cleisthenes.Member{}, nil)
+		rbc.broadcaster = bc
+		rbcList = append(rbcList, rbc)
+		bcList = append(bcList, bc)
+	}
+
+	for idx, rbc := range rbcList {
+		ownAddr := cleisthenes.Address{
+			Ip:   "127.0.0.1",
+			Port: uint16(8000 + idx),
+		}
+		owner := cleisthenes.Member{
+			Address: ownAddr,
+		}
+		if err := rbc.handleValueRequest(owner, valReqList[idx]); err != nil {
+			t.Fatalf("handle val request faild with error : %s", err.Error())
+		}
+
+		if !rbc.valReceived.Value() {
+			t.Fatalf("rbc instance %s fail to receive val request", rbc.proposer)
+		}
+
+		msg := bcList[idx].BroadcastedMessageList[0]
+
+		req, ok := msg.Payload.(*pb.Message_Rbc)
+		if !ok {
+			t.Fatalf("expected payload type is %+v, but got %+v", pb.Message_Rbc{}, req)
+		}
+
+		receivedVal := &ValRequest{}
+		if err := json.Unmarshal(req.Rbc.Payload, receivedVal); err != nil {
+			t.Fatalf("unmarshal val request failed with error: %s", err.Error())
+		}
+
+		if !merkletree.ValidatePath(receivedVal.Data, receivedVal.RootHash, receivedVal.RootPath, receivedVal.Indexes) {
+			t.Fatalf("val request has invalid datas")
+		}
+	}
+}
+
+// scenario
+// 4 node(n0, n1, n2, n3), 1 byzantine.
+// n0 sends VALUE message to n0, n1, n2, n3.
+// each nodes sends ECHO messages.
+func Test_RBC_handleEchoRequest(t *testing.T) {
+	var n int = 4
+	var f int = 1
+
+	memberMap := cleisthenes.NewMemberMap()
+	for idx := 0; idx < n; idx++ {
+		member := cleisthenes.NewMember("127.0.0.1", uint16(8000+idx))
+		memberMap.Add(member)
+	}
+
+	nodeList := make([]*mockNode, 0)
+	for _, member := range memberMap.Members() {
+		node := setUpMockNode(t, n, f, member, memberMap)
+		nodeList = append(nodeList, node)
+	}
+
+	valReqList := setUpValReqList(t, n, f, []byte("data"))
+
+	for _, node := range nodeList {
+		for i, valReq := range valReqList {
+			node.rbcList[0].handleEchoRequest(nodeList[i].owner, &EchoRequest{*valReq})
+		}
+	}
+
+	for _, node := range nodeList {
+		if node.rbcList[0].countEchos(valReqList[0].RootHash) != 4 {
+			t.Fatalf("error - expected : %d, got : %d", 4, node.rbcList[0].countEchos(valReqList[0].RootHash))
+		}
+	}
+}
+
 func Test_RBC_interpolate(t *testing.T) {
 	var n int = 4
 	var f int = 1
 
 	data := []byte("data block")
 	valReqs := setUpValReqList(t, 4, 1, data)
-	echoReqRepo, _ := NewEchoReqRepository()
+	echoReqRepo := NewEchoReqRepository()
 
 	for idx, req := range valReqs {
 		addr := cleisthenes.Address{
@@ -63,7 +218,7 @@ func Test_RBC_interpolate(t *testing.T) {
 		echoReqRepo.Save(addr, &EchoRequest{*req})
 	}
 
-	enc, err := reedsolomon.New(n-f, f)
+	enc, err := reedsolomon.New(n-2*f, 2*f)
 	if err != nil {
 		t.Fatalf("error in reedsolomon : %s", err.Error())
 	}
@@ -71,8 +226,8 @@ func Test_RBC_interpolate(t *testing.T) {
 	rbc := &RBC{
 		n:               n,
 		f:               f,
-		numDataShards:   n - f,
-		numParityShards: f,
+		numDataShards:   n - 2*f,
+		numParityShards: 2 * f,
 		contentLength:   uint64(len(data)),
 		enc:             enc,
 		echoReqRepo:     echoReqRepo,
@@ -95,7 +250,7 @@ func Test_MakeRequest(t *testing.T) {
 	var F int = 3
 
 	data := []byte("data")
-	enc, err := reedsolomon.New(N-F, F)
+	enc, err := reedsolomon.New(N-2*F, 2*F)
 	if err != nil {
 		t.Fatalf("error in reedsolomon : %s", err.Error())
 	}
@@ -121,7 +276,7 @@ func Test_shard(t *testing.T) {
 	var F int = 3
 
 	data := []byte("data")
-	enc, err := reedsolomon.New(N-F, F)
+	enc, err := reedsolomon.New(N-2*F, 2*F)
 	if err != nil {
 		t.Fatalf("error in reedsolomon : %s", err.Error())
 	}
@@ -136,7 +291,7 @@ func Test_shard(t *testing.T) {
 	}
 
 	var value []byte
-	for _, data := range shards[:N-F] {
+	for _, data := range shards[:N-2*F] {
 		value = append(value, data.Bytes()...)
 	}
 
