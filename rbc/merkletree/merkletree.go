@@ -21,14 +21,14 @@ func (w *Wrapper) MerkleRoot() RootHash {
 }
 
 func (w *Wrapper) MerklePath(data Data) (RootPath, []int64, error) {
-	return w.tree.GetMerklePath(data.content)
+	return w.tree.GetMerklePath(data.Content)
 }
 
 func New(dataList []Data) (*Wrapper, error) {
 	var merkleDataList []MerkleData
 
 	for _, data := range dataList {
-		merkleDataList = append(merkleDataList, data.content)
+		merkleDataList = append(merkleDataList, data.Content)
 	}
 
 	t, err := merkletree.NewTree(merkleDataList)
@@ -40,19 +40,23 @@ func New(dataList []Data) (*Wrapper, error) {
 }
 
 type Data struct {
-	content content
+	Content content
 }
 
 func NewData(data []byte) Data {
-	return Data{content: content(data)}
+	return Data{Content: content(data)}
 }
 
 func (d Data) CalculateHash() ([]byte, error) {
-	return d.content.CalculateHash()
+	return d.Content.CalculateHash()
 }
 
 func (d Data) Equals(a Data) (bool, error) {
-	return d.content.Equals(a.content)
+	return d.Content.Equals(a.Content)
+}
+
+func (d Data) Bytes() []byte {
+	return d.Content
 }
 
 type content []byte
