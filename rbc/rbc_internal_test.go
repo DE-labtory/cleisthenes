@@ -3,6 +3,7 @@ package rbc
 import (
 	"bytes"
 	"encoding/json"
+	"reflect"
 	"testing"
 
 	"github.com/DE-labtory/cleisthenes/rbc/merkletree"
@@ -17,6 +18,34 @@ import (
 type mockNode struct {
 	owner   cleisthenes.Member
 	rbcList []*RBC
+}
+
+func setUpMockNode(t *testing.T, n int, f int, owner cleisthenes.Member, memberMap *cleisthenes.MemberMap) *mockNode {
+	connMemberMap := cleisthenes.NewMemberMap()
+	for _, member := range memberMap.Members() {
+		if !reflect.DeepEqual(member, owner) {
+			connMemberMap.Add(&member)
+		}
+	}
+
+	bc := setUpMockBC(t, connMemberMap)
+
+	rbcList := make([]*RBC, 0)
+	config := cleisthenes.Config{
+		N:       n,
+		F:       f,
+		Address: owner.Address,
+	}
+	for _, member := range memberMap.Members() {
+		rbc := New(config, member, nil)
+		rbc.broadcaster = bc
+		rbcList = append(rbcList, rbc)
+	}
+
+	return &mockNode{
+		owner:   owner,
+		rbcList: rbcList,
+	}
 }
 
 func setUpMockBC(t *testing.T, memberMap *cleisthenes.MemberMap) *mock.Broadcaster {
@@ -147,6 +176,41 @@ func Test_RBC_handleValueRequest(t *testing.T) {
 	}
 }
 
+// scenario
+// 4 node(n0, n1, n2, n3), 1 byzantine.
+// n0 sends VALUE message to n0, n1, n2, n3.
+// each nodes sends ECHO messages.
+func Test_RBC_handleEchoRequest(t *testing.T) {
+	var n int = 4
+	var f int = 1
+
+	memberMap := cleisthenes.NewMemberMap()
+	for idx := 0; idx < n; idx++ {
+		member := cleisthenes.NewMember("127.0.0.1", uint16(8000+idx))
+		memberMap.Add(member)
+	}
+
+	nodeList := make([]*mockNode, 0)
+	for _, member := range memberMap.Members() {
+		node := setUpMockNode(t, n, f, member, memberMap)
+		nodeList = append(nodeList, node)
+	}
+
+	valReqList := setUpValReqList(t, n, f, []byte("data"))
+
+	for _, node := range nodeList {
+		for i, valReq := range valReqList {
+			node.rbcList[0].handleEchoRequest(nodeList[i].owner, &EchoRequest{*valReq})
+		}
+	}
+
+	for _, node := range nodeList {
+		if node.rbcList[0].countEchos(valReqList[0].RootHash) != 4 {
+			t.Fatalf("error - expected : %d, got : %d", 4, node.rbcList[0].countEchos(valReqList[0].RootHash))
+		}
+	}
+}
+
 func Test_RBC_interpolate(t *testing.T) {
 	var n int = 4
 	var f int = 1
@@ -163,7 +227,7 @@ func Test_RBC_interpolate(t *testing.T) {
 		echoReqRepo.Save(addr, &EchoRequest{*req})
 	}
 
-	enc, err := reedsolomon.New(n-2*f, 2*f)
+	enc, err := reedsolomon.New(n-f, f)
 	if err != nil {
 		t.Fatalf("error in reedsolomon : %s", err.Error())
 	}
@@ -171,8 +235,9 @@ func Test_RBC_interpolate(t *testing.T) {
 	rbc := &RBC{
 		n:               n,
 		f:               f,
-		numDataShards:   n - 2*f,
-		numParityShards: 2 * f,
+		numDataShards:   n - f,
+		numParityShards: f,
+		contentLength:   uint64(len(data)),
 		enc:             enc,
 		echoReqRepo:     echoReqRepo,
 	}
@@ -194,7 +259,7 @@ func Test_MakeRequest(t *testing.T) {
 	var F int = 3
 
 	data := []byte("data")
-	enc, err := reedsolomon.New(N-2*F, 2*F)
+	enc, err := reedsolomon.New(N-F, F)
 	if err != nil {
 		t.Fatalf("error in reedsolomon : %s", err.Error())
 	}

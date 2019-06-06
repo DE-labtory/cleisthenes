@@ -55,18 +55,6 @@ func (d Data) Equals(a Data) (bool, error) {
 	return d.Content.Equals(a.Content)
 }
 
-//func (d *Data) UnmarshalJSON(data []byte) error {
-//	var content content
-//	err := json.Unmarshal(data, &content)
-//	if err != nil {
-//		return err
-//	}
-//
-//	d.Content = content
-//
-//	return nil
-//}
-
 func (d Data) Bytes() []byte {
 	return d.Content
 }

@@ -8,8 +8,8 @@ import (
 	"github.com/DE-labtory/cleisthenes"
 	"github.com/DE-labtory/cleisthenes/pb"
 	"github.com/DE-labtory/cleisthenes/rbc/merkletree"
+	"github.com/DE-labtory/iLogger"
 	"github.com/golang/protobuf/ptypes"
-	"github.com/it-chain/iLogger"
 	"github.com/klauspost/reedsolomon"
 	"github.com/syndtr/goleveldb/leveldb/errors"
 )
@@ -56,13 +56,9 @@ type RBC struct {
 	broadcaster cleisthenes.Broadcaster
 }
 
-func New(config cleisthenes.Config, proposer cleisthenes.Member, connPool *cleisthenes.ConnectionPool) *RBC {
-	if config.F == 0 {
-		config.F = (config.N - 1) / 3
-	}
-
-	numParityShards := config.F
-	numDataShards := config.N - numParityShards
+func New(n, f int, owner, proposer cleisthenes.Member, broadcaster cleisthenes.Broadcaster) *RBC {
+	numParityShards := f
+	numDataShards := n - numParityShards
 
 	enc, err := reedsolomon.New(numDataShards, numParityShards)
 	if err != nil {
@@ -79,12 +75,10 @@ func New(config cleisthenes.Config, proposer cleisthenes.Member, connPool *cleis
 		panic(err)
 	}
 
-	owner := cleisthenes.NewMember(config.Address.Ip, config.Address.Port)
-
 	rbc := &RBC{
-		n:               config.N,
-		f:               config.F,
-		owner:           *owner,
+		n:               n,
+		f:               f,
+		owner:           owner,
 		proposer:        proposer,
 		enc:             enc,
 		numDataShards:   numDataShards,
@@ -94,7 +88,7 @@ func New(config cleisthenes.Config, proposer cleisthenes.Member, connPool *cleis
 		closeChan:       make(chan struct{}),
 		reqChan:         make(chan request),
 		inputChan:       make(chan InputMessage),
-		broadcaster:     connPool,
+		broadcaster:     broadcaster,
 	}
 	go rbc.run()
 	return rbc
@@ -111,10 +105,10 @@ func (rbc *RBC) broadcast(proposer cleisthenes.Member, typ pb.RBCType, req cleis
 		Timestamp: ptypes.TimestampNow(),
 		Payload: &pb.Message_Rbc{
 			Rbc: &pb.RBC{
-				Payload:  payload,
-				Proposer: proposer.Address.String(),
+				Payload:       payload,
+				Proposer:      proposer.Address.String(),
 				ContentLength: rbc.contentLength,
-				Type:     typ,
+				Type:          typ,
 			},
 		},
 	})
@@ -218,10 +212,56 @@ func (rbc *RBC) handleValueRequest(sender cleisthenes.Member, req *ValRequest) e
 }
 
 func (rbc *RBC) handleEchoRequest(sender cleisthenes.Member, req *EchoRequest) error {
+	if req, _ := rbc.echoReqRepo.Find(sender.Address); req != nil {
+		return fmt.Errorf("already received echo request - from : %s", sender.Address.String())
+	}
+
+	if !validateMessage(&req.ValRequest) {
+		return fmt.Errorf("invalid ECHO request - from : %s", sender.Address.String())
+	}
+
+	rbc.echoReqRepo.Save(sender.Address, req)
+
+	if rbc.countEchos(req.RootHash) >= rbc.echoThreshold() && !rbc.readySent {
+		rbc.readySent = true
+		readyReq := &ReadyRequest{req.RootHash}
+		rbc.broadcast(rbc.proposer, pb.RBC_READY, readyReq)
+	}
+
+	if rbc.countReadys(req.RootHash) >= rbc.outputThreshold() && rbc.countEchos(req.RootHash) >= rbc.numDataShards {
+		value, err := rbc.interpolate(req.RootHash)
+		if err != nil {
+			return err
+		}
+		rbc.value = value
+	}
+
+	iLogger.Infof(nil, "[ECHO] owner : %s, proposer : %s, sender : %s", rbc.owner.Address.String(), rbc.proposer.Address.String(), sender.Address.String())
 	return nil
 }
 
 func (rbc *RBC) handleReadyRequest(sender cleisthenes.Member, req *ReadyRequest) error {
+	if req, _ := rbc.readyReqRepo.Find(sender.Address); req != nil {
+		return fmt.Errorf("already received ready request - from : %s", sender.Address.String())
+	}
+
+	rbc.readyReqRepo.Save(sender.Address, req)
+
+	if rbc.countReadys(req.RootHash) >= rbc.readyThreshold() && !rbc.readySent {
+		rbc.readySent = true
+		readyReq := &ReadyRequest{req.RootHash}
+		rbc.broadcast(rbc.proposer, pb.RBC_READY, readyReq)
+	}
+
+	if rbc.countReadys(req.RootHash) >= rbc.outputThreshold() && rbc.countEchos(req.RootHash) >= rbc.numDataShards {
+		value, err := rbc.interpolate(req.RootHash)
+		if err != nil {
+			return err
+		}
+		rbc.value = value
+	}
+
+	iLogger.Infof(nil, "[READY] owner : %s, proposer : %s, sender : %s", rbc.owner.Address.String(), rbc.proposer.Address.String(), sender.Address.String())
 	return nil
 }
 

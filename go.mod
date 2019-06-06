@@ -9,5 +9,6 @@ require (
 	github.com/google/uuid v1.1.1
 	github.com/klauspost/cpuid v1.2.1 // indirect
 	github.com/klauspost/reedsolomon v1.9.1
+	github.com/syndtr/goleveldb v1.0.0
 	google.golang.org/grpc v1.20.1
 )
