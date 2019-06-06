@@ -8,6 +8,8 @@ import (
 	"github.com/DE-labtory/cleisthenes"
 	"github.com/DE-labtory/cleisthenes/pb"
 	"github.com/DE-labtory/cleisthenes/rbc/merkletree"
+	"github.com/DE-labtory/iLogger"
+	"github.com/golang/protobuf/ptypes"
 	"github.com/klauspost/reedsolomon"
 	"github.com/syndtr/goleveldb/leveldb/errors"
 )
@@ -54,11 +56,63 @@ type RBC struct {
 	broadcaster cleisthenes.Broadcaster
 }
 
-func New(config cleisthenes.Config, proposer cleisthenes.Member, connPool *cleisthenes.ConnectionPool) *RBC {
-	return nil
+func New(n, f int, owner, proposer cleisthenes.Member, broadcaster cleisthenes.Broadcaster) *RBC {
+	numParityShards := f
+	numDataShards := n - numParityShards
+
+	enc, err := reedsolomon.New(numDataShards, numParityShards)
+	if err != nil {
+		panic(err)
+	}
+
+	echoReqRepo, err := NewEchoReqRepository()
+	if err != nil {
+		panic(err)
+	}
+
+	readyReqRepo, err := NewReadyReqRepository()
+	if err != nil {
+		panic(err)
+	}
+
+	rbc := &RBC{
+		n:               n,
+		f:               f,
+		owner:           owner,
+		proposer:        proposer,
+		enc:             enc,
+		numDataShards:   numDataShards,
+		numParityShards: numParityShards,
+		echoReqRepo:     echoReqRepo,
+		readyReqRepo:    readyReqRepo,
+		closeChan:       make(chan struct{}),
+		reqChan:         make(chan request),
+		inputChan:       make(chan InputMessage),
+		broadcaster:     broadcaster,
+	}
+	go rbc.run()
+	return rbc
 }
 
 func (rbc *RBC) broadcast(proposer cleisthenes.Member, typ pb.RBCType, req cleisthenes.Request) error {
+	payload, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+
+	rbc.broadcaster.ShareMessage(pb.Message{
+		Sender:    rbc.owner.Address.String(),
+		Timestamp: ptypes.TimestampNow(),
+		Payload: &pb.Message_Rbc{
+			Rbc: &pb.RBC{
+				Payload:       payload,
+				Proposer:      proposer.Address.String(),
+				ContentLength: rbc.contentLength,
+				Type:          typ,
+			},
+		},
+	})
+
 	return nil
 }
 
@@ -136,6 +190,24 @@ func (rbc *RBC) muxRequest(sender cleisthenes.Member, msg *pb.Message_Rbc) error
 }
 
 func (rbc *RBC) handleValueRequest(sender cleisthenes.Member, req *ValRequest) error {
+	if rbc.valReceived {
+		return fmt.Errorf("already receive req message")
+	}
+
+	if rbc.echoSent {
+		return fmt.Errorf("already sent echo message - sender id : %s", sender.Address.String())
+	}
+
+	if !validateMessage(req) {
+		return fmt.Errorf("invalid VALUE request")
+	}
+
+	rbc.valReceived = true
+	rbc.echoSent = true
+	echoReq := &EchoRequest{*req}
+	rbc.broadcast(rbc.proposer, pb.RBC_ECHO, echoReq)
+
+	iLogger.Infof(nil, "[VAL] onwer : %s, proposer : %s, sender : %s", rbc.owner.Address.String(), rbc.proposer.Address.String(), sender.Address.String())
 	return nil
 }
 
@@ -194,11 +266,29 @@ func makeRequest(shards []merkletree.Data) ([]cleisthenes.Request, error) {
 }
 
 func (rbc *RBC) countEchos(rootHash []byte) int {
-	return 0
+	cnt := 0
+
+	reqs := rbc.echoReqRepo.FindAll()
+	for _, req := range reqs {
+		if bytes.Equal(rootHash, req.(*EchoRequest).RootHash) {
+			cnt++
+		}
+	}
+
+	return cnt
 }
 
 func (rbc *RBC) countReadys(rootHash []byte) int {
-	return 0
+	cnt := 0
+
+	reqs := rbc.readyReqRepo.FindAll()
+	for _, req := range reqs {
+		if bytes.Equal(rootHash, req.(*ReadyRequest).RootHash) {
+			cnt++
+		}
+	}
+
+	return cnt
 }
 
 // interpolate the given shards
