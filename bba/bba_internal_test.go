@@ -11,19 +11,17 @@ import (
 	"github.com/DE-labtory/cleisthenes/test/mock"
 )
 
-type handleBvalTester struct {
-	bvalList  []*bvalRequest
+type bbaTester struct {
 	assertMap map[int]func(t *testing.T, bbaInstance *BBA)
 }
 
-func newHandleBvalTester(bvalList []*bvalRequest) *handleBvalTester {
-	return &handleBvalTester{
-		bvalList:  bvalList,
+func newBBATester() *bbaTester {
+	return &bbaTester{
 		assertMap: make(map[int]func(t *testing.T, bbaInstance *BBA)),
 	}
 }
 
-func (h *handleBvalTester) setupRequestList(bvalList []*bvalRequest) ([]request, error) {
+func (h *bbaTester) setupBvalRequestList(bvalList []*bvalRequest) ([]request, error) {
 	result := make([]request, 0)
 	for i, bval := range bvalList {
 		d, err := json.Marshal(bval)
@@ -32,13 +30,38 @@ func (h *handleBvalTester) setupRequestList(bvalList []*bvalRequest) ([]request,
 		}
 		result = append(result, request{
 			sender: cleisthenes.Member{Address: cleisthenes.Address{Ip: "localhost" + strconv.Itoa(i), Port: 8080}},
-			data:   &pb.Message_Bba{Bba: &pb.BBA{Payload: d}},
+			data: &pb.Message_Bba{
+				Bba: &pb.BBA{
+					Type:    pb.BBA_BVAL,
+					Payload: d,
+				},
+			},
 		})
 	}
 	return result, nil
 }
 
-func (h *handleBvalTester) setupBvalRepository() cleisthenes.RequestRepository {
+func (h *bbaTester) setupAuxRequestList(bvalList []*auxRequest) ([]request, error) {
+	result := make([]request, 0)
+	for i, bval := range bvalList {
+		d, err := json.Marshal(bval)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, request{
+			sender: cleisthenes.Member{Address: cleisthenes.Address{Ip: "my.node." + strconv.Itoa(i), Port: 8080}},
+			data: &pb.Message_Bba{
+				Bba: &pb.BBA{
+					Type:    pb.BBA_AUX,
+					Payload: d,
+				},
+			},
+		})
+	}
+	return result, nil
+}
+
+func (h *bbaTester) setupRequestRepository() cleisthenes.RequestRepository {
 	bvalRepo := &mock.RequestRepository{
 		ReqMap: make(map[cleisthenes.Address]cleisthenes.Request),
 	}
@@ -59,9 +82,9 @@ func (h *handleBvalTester) setupBvalRepository() cleisthenes.RequestRepository {
 	return bvalRepo
 }
 
-func (h *handleBvalTester) setupBroadcaster(reqList []request) *mock.Broadcaster {
+func (h *bbaTester) setupBroadcaster(reqList []request) *mock.Broadcaster {
 	broadcaster := &mock.Broadcaster{
-		ConnMap:                make(map[cleisthenes.ConnId]mock.Connection),
+		ConnMap:                make(map[cleisthenes.Address]mock.Connection),
 		BroadcastedMessageList: make([]pb.Message, 0),
 	}
 	for _, req := range reqList {
@@ -71,27 +94,27 @@ func (h *handleBvalTester) setupBroadcaster(reqList []request) *mock.Broadcaster
 		conn.SendFunc = func(msg pb.Message, successCallBack func(interface{}), errCallBack func(error)) {
 			broadcaster.BroadcastedMessageList = append(broadcaster.BroadcastedMessageList, msg)
 		}
-		broadcaster.ConnMap[req.sender.Address.String()] = conn
+		broadcaster.ConnMap[req.sender.Address] = conn
 	}
 	return broadcaster
 }
 
-func (h *handleBvalTester) setupAssert(i int, assert func(t *testing.T, bbaInstance *BBA)) {
+func (h *bbaTester) setupAssert(i int, assert func(t *testing.T, bbaInstance *BBA)) {
 	h.assertMap[i] = assert
 }
 
-func (h *handleBvalTester) assert(i int) (func(t *testing.T, bbaInstance *BBA), bool) {
+func (h *bbaTester) assert(i int) (func(t *testing.T, bbaInstance *BBA), bool) {
 	f, ok := h.assertMap[i]
 	return f, ok
 }
 
-func handleBvalRequestTestSetup(t *testing.T, bvalList []*bvalRequest) (*BBA, *mock.Broadcaster, *handleBvalTester, func()) {
-	tester := newHandleBvalTester(bvalList)
-	reqList, err := tester.setupRequestList(bvalList)
+func setupHandleBvalRequestTest(t *testing.T, bvalList []*bvalRequest) (*BBA, *mock.Broadcaster, *bbaTester, func()) {
+	tester := newBBATester()
+	reqList, err := tester.setupBvalRequestList(bvalList)
 	if err != nil {
 		t.Fatalf("failed to setup request list: err=%s", err)
 	}
-	bvalRepo := tester.setupBvalRepository()
+	bvalRepo := tester.setupRequestRepository()
 	broadcaster := tester.setupBroadcaster(reqList)
 
 	bbaInstance := &BBA{
@@ -119,7 +142,7 @@ func TestBBA_HandleBvalRequest(t *testing.T) {
 		{Value: one},
 	}
 
-	bbaInstance, broadcaster, tester, teardown := handleBvalRequestTestSetup(t, bvalList)
+	bbaInstance, broadcaster, tester, teardown := setupHandleBvalRequestTest(t, bvalList)
 	go func() {
 		<-bbaInstance.binValueChan
 		teardown()
@@ -187,7 +210,7 @@ func TestBBA_HandleBvalRequest_OneZeroCombined(t *testing.T) {
 		{Value: one},  // 9. (one, zero) = (6, 4)
 	}
 
-	bbaInstance, broadcaster, tester, teardown := handleBvalRequestTestSetup(t, bvalList)
+	bbaInstance, broadcaster, tester, teardown := setupHandleBvalRequestTest(t, bvalList)
 	done := make(chan struct{})
 
 	go func() {
@@ -200,6 +223,7 @@ func TestBBA_HandleBvalRequest_OneZeroCombined(t *testing.T) {
 		teardown()
 	}()
 
+	// when receive 6 bval request
 	tester.setupAssert(5, func(t *testing.T, bbaInstance *BBA) {
 		if !bbaInstance.broadcastedBvalSet.exist(one) {
 			t.Fatalf("broadcasted bval set not include f+1 sent binary value")
@@ -225,6 +249,7 @@ func TestBBA_HandleBvalRequest_OneZeroCombined(t *testing.T) {
 			}
 		}
 	})
+	// when receive 8 bval request
 	tester.setupAssert(7, func(t *testing.T, bbaInstance *BBA) {
 		if !bbaInstance.broadcastedBvalSet.exist(zero) {
 			t.Fatalf("broadcasted bval set not include f+1 sent binary value")
@@ -249,6 +274,7 @@ func TestBBA_HandleBvalRequest_OneZeroCombined(t *testing.T) {
 			}
 		}
 	})
+	// when receive 10 bval request
 	tester.setupAssert(9, func(t *testing.T, bbaInstance *BBA) {
 		if bbaInstance.binValueSet.exist(one) {
 			t.Fatalf("binValue set **include** f+1 sent binary value")
@@ -274,4 +300,141 @@ func TestBBA_HandleBvalRequest_OneZeroCombined(t *testing.T) {
 		}
 	}
 	done <- struct{}{}
+}
+
+func setupHandleAuxRequestTest(t *testing.T, auxList []*auxRequest) (*BBA, *mock.Broadcaster, *bbaTester, func()) {
+	tester := newBBATester()
+	reqList, err := tester.setupAuxRequestList(auxList)
+	if err != nil {
+		t.Fatalf("failed to setup request list: err=%s", err)
+	}
+	bvalRepo := tester.setupRequestRepository()
+	auxRepo := tester.setupRequestRepository()
+	broadcaster := tester.setupBroadcaster(reqList)
+
+	bbaInstance := &BBA{
+		n:                   10,
+		f:                   3,
+		bvalRepo:            bvalRepo,
+		auxRepo:             auxRepo,
+		tryoutAgreementChan: make(chan struct{}, 1),
+		binValueSet:         newBinarySet(),
+		broadcastedBvalSet:  newBinarySet(),
+		broadcaster:         broadcaster,
+	}
+	return bbaInstance, broadcaster, tester, func() {
+		close(bbaInstance.tryoutAgreementChan)
+	}
+}
+
+func TestBBA_HandleAuxRequest(t *testing.T) {
+	auxList := []*auxRequest{
+		{Value: one},
+		{Value: one},
+		{Value: one},
+		{Value: one},
+		{Value: one},
+		{Value: one},
+		{Value: one},
+		{Value: one},
+	}
+
+	bbaInstance, _, tester, teardown := setupHandleAuxRequestTest(t, auxList)
+	defer teardown()
+
+	// when receive 7 aux request
+	tester.setupAssert(6, func(t *testing.T, bbaInstance *BBA) {
+		// should receive signal from tryoutAgreementChan
+		<-bbaInstance.tryoutAgreementChan
+
+		reqList := bbaInstance.auxRepo.FindAll()
+		if len(reqList) != 7 {
+			t.Fatalf("expected request list length is %d, but got %d", 7, len(reqList))
+		}
+		for i, req := range reqList {
+			aux, ok := req.(*auxRequest)
+			if !ok {
+				t.Fatalf("request is not auxRequest type: [%d]", i)
+			}
+			if aux.Value != one {
+				t.Fatalf("request value is not one")
+			}
+		}
+	})
+
+	for i, aux := range auxList {
+		sender := cleisthenes.Member{
+			Address: cleisthenes.Address{
+				Ip:   "localhost" + strconv.Itoa(i),
+				Port: 8080,
+			},
+		}
+		if err := bbaInstance.handleAuxRequest(sender, aux); err != nil {
+			t.Fatalf("handle bval request failed with error: %s", err.Error())
+		}
+
+		if f, ok := tester.assert(i); ok {
+			f(t, bbaInstance)
+		}
+	}
+}
+
+func TestBBA_HandleAuxRequest_OneZeroCombined(t *testing.T) {
+	auxList := []*auxRequest{
+		{Value: one},  // 0. (one, zero) = (1, 0)
+		{Value: zero}, // 1. (one, zero) = (1, 1)
+		{Value: zero}, // 2. (one, zero) = (1, 2)
+		{Value: one},  // 3. (one, zero) = (2, 2)
+		{Value: one},  // 4. (one, zero) = (3, 2)
+		{Value: one},  // 5. (one, zero) = (4, 2), one broadcasted
+		{Value: zero}, // 6. (one, zero) = (4, 3)
+		{Value: zero}, // 7. (one, zero) = (4, 4), zero broadcasted
+		{Value: one},  // 8. (one, zero)  = (5, 4)
+		{Value: one},  // 9. (one, zero) = (6, 4)
+		{Value: one},  // 10. (one, zero) = (7, 4)
+	}
+
+	bbaInstance, _, tester, teardown := setupHandleAuxRequestTest(t, auxList)
+	defer teardown()
+
+	// when receive 11 aux request
+	tester.setupAssert(10, func(t *testing.T, bbaInstance *BBA) {
+		// should receive signal from tryoutAgreementChan
+		<-bbaInstance.tryoutAgreementChan
+
+		reqList := bbaInstance.auxRepo.FindAll()
+		if len(reqList) != 11 {
+			t.Fatalf("expected request list length is %d, but got %d", 11, len(reqList))
+		}
+
+		oneCount := 0
+		for i, req := range reqList {
+			aux, ok := req.(*auxRequest)
+			if !ok {
+				t.Fatalf("request is not auxRequest type: [%d]", i)
+			}
+			if aux.Value == one {
+				oneCount++
+			}
+		}
+		if oneCount != 7 {
+			t.Fatalf("expected number of one is %d, but got %d", 7, oneCount)
+		}
+	})
+
+	for i, aux := range auxList {
+		sender := cleisthenes.Member{
+			Address: cleisthenes.Address{
+				Ip:   "localhost" + strconv.Itoa(i),
+				Port: 8080,
+			},
+		}
+		if err := bbaInstance.handleAuxRequest(sender, aux); err != nil {
+			t.Fatalf("handle bval request failed with error: %s", err.Error())
+		}
+
+		if f, ok := tester.assert(i); ok {
+			f(t, bbaInstance)
+		}
+	}
 }

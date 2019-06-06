@@ -58,22 +58,27 @@ type BBA struct {
 	auxRepo         cleisthenes.RequestRepository
 	incomingReqRepo cleisthenes.IncomingRequestRepository
 
-	closeChan    chan struct{}
-	reqChan      chan request
-	binValueChan chan struct{}
+	reqChan             chan request
+	closeChan           chan struct{}
+	binValueChan        chan struct{}
+	tryoutAgreementChan chan struct{}
 
 	broadcaster cleisthenes.Broadcaster
 }
 
 func New(n int) *BBA {
 	return &BBA{
-		n: n,
+		n:                   n,
+		reqChan:             make(chan request),
+		closeChan:           make(chan struct{}),
+		binValueChan:        make(chan struct{}),
+		tryoutAgreementChan: make(chan struct{}),
 	}
 }
 
 // HandleInput will set the given val as the initial value to be proposed in the
 // Agreement
-func (bba *BBA) HandleInput(id cleisthenes.ConnId, msg *pb.Message_Bba) error {
+func (bba *BBA) HandleInput(sender cleisthenes.Member, msg *pb.Message_Bba) error {
 	return nil
 }
 
@@ -131,7 +136,20 @@ func (bba *BBA) handleBvalRequest(sender cleisthenes.Member, bval *bvalRequest) 
 	return nil
 }
 
-func (bba *BBA) handleAuxRequest(sender cleisthenes.Member, req *auxRequest) error {
+func (bba *BBA) handleAuxRequest(sender cleisthenes.Member, aux *auxRequest) error {
+	if err := bba.saveAuxIfNotExist(sender, aux); err != nil {
+		return err
+	}
+	count := bba.countAuxByValue(aux.Value)
+	if count < bba.tryoutAgreementThreshold() {
+		return nil
+	}
+	bba.tryoutAgreementChan <- struct{}{}
+	return nil
+}
+
+// TODO: implement me w/ test cases
+func (bba *BBA) tryoutAgreement() error {
 	return nil
 }
 
@@ -166,6 +184,8 @@ func (bba *BBA) run() {
 			req.err <- bba.muxMessage(req.sender, req.data)
 		case <-bba.binValueChan:
 			// TODO: broadcast AUX message
+		case <-bba.tryoutAgreementChan:
+			bba.tryoutAgreement()
 		}
 	}
 }
@@ -181,16 +201,37 @@ func (bba *BBA) saveBvalIfNotExist(sender cleisthenes.Member, data *bvalRequest)
 	return bba.bvalRepo.Save(sender.Address, data)
 }
 
+func (bba *BBA) saveAuxIfNotExist(sender cleisthenes.Member, data *auxRequest) error {
+	r, err := bba.auxRepo.Find(sender.Address)
+	if err != nil {
+		return err
+	}
+	if r != nil {
+		return nil
+	}
+	return bba.auxRepo.Save(sender.Address, data)
+}
+
 func (bba *BBA) countBvalByValue(val Binary) int {
 	bvalList := bba.convToBvalList(bba.bvalRepo.FindAll())
-
-	cnt := 0
+	count := 0
 	for _, bval := range bvalList {
 		if bval.Value == val {
-			cnt++
+			count++
 		}
 	}
-	return cnt
+	return count
+}
+
+func (bba *BBA) countAuxByValue(val Binary) int {
+	auxList := bba.convToAuxList(bba.auxRepo.FindAll())
+	count := 0
+	for _, aux := range auxList {
+		if aux.Value == val {
+			count++
+		}
+	}
+	return count
 }
 
 func (bba *BBA) convToBvalList(reqList []cleisthenes.Request) []*bvalRequest {
@@ -201,10 +242,22 @@ func (bba *BBA) convToBvalList(reqList []cleisthenes.Request) []*bvalRequest {
 	return result
 }
 
+func (bba *BBA) convToAuxList(reqList []cleisthenes.Request) []*auxRequest {
+	result := make([]*auxRequest, 0)
+	for _, req := range reqList {
+		result = append(result, req.(*auxRequest))
+	}
+	return result
+}
+
 func (bba *BBA) bvalBroadcastThreshold() int {
 	return bba.f + 1
 }
 
 func (bba *BBA) binValueSetThreshold() int {
 	return 2*bba.f + 1
+}
+
+func (bba *BBA) tryoutAgreementThreshold() int {
+	return bba.n - bba.f
 }
