@@ -25,6 +25,8 @@ type request struct {
 type BBA struct {
 	*sync.RWMutex
 
+	owner cleisthenes.Member
+
 	// number of network nodes
 	n int
 
@@ -51,7 +53,7 @@ type BBA struct {
 
 	bvalRepo        cleisthenes.RequestRepository
 	auxRepo         cleisthenes.RequestRepository
-	incomingReqRepo cleisthenes.IncomingRequestRepository
+	incomingReqRepo incomingRequestRepository
 
 	reqChan             chan request
 	closeChan           chan struct{}
@@ -64,9 +66,10 @@ type BBA struct {
 	coinGenerator cleisthenes.CoinGenerator
 }
 
-func New(n int) *BBA {
+func New(n int, owner cleisthenes.Member) *BBA {
 	return &BBA{
 		n:                   n,
+		owner:               owner,
 		est:                 cleisthenes.NewBinaryState(),
 		dec:                 cleisthenes.NewBinaryState(),
 		reqChan:             make(chan request),
@@ -79,17 +82,29 @@ func New(n int) *BBA {
 
 // HandleInput will set the given val as the initial value to be proposed in the
 // Agreement
-func (bba *BBA) HandleInput(id cleisthenes.ConnId, msg *pb.Message_Bba) error {
-	return nil
+func (bba *BBA) HandleInput(msg *pb.Message_Bba) error {
+	req := request{
+		sender: bba.owner,
+		data:   msg,
+		err:    make(chan error),
+	}
+	bba.reqChan <- req
+	return <-req.err
 }
 
 // HandleMessage will process the given rpc message.
-func (b *BBA) HandleMessage(sender cleisthenes.Member, msg *pb.Message_Bba) error {
-	return nil
+func (bba *BBA) HandleMessage(sender cleisthenes.Member, msg *pb.Message_Bba) error {
+	req := request{
+		sender: sender,
+		data:   msg,
+		err:    make(chan error),
+	}
+	bba.reqChan <- req
+	return <-req.err
 }
 
-func (bba *BBA) Result() bool {
-	return false
+func (bba *BBA) Result() cleisthenes.BinaryState {
+	return *bba.dec
 }
 
 func (bba *BBA) Close() {
@@ -101,7 +116,8 @@ func (bba *BBA) Close() {
 }
 
 func (bba *BBA) muxMessage(sender cleisthenes.Member, msg *pb.Message_Bba) error {
-	// TODO: request epoch check
+	// TODO: save message if round is larger
+
 	switch msg.Bba.Type {
 	case pb.BBA_BVAL:
 		bval := &bvalRequest{}
@@ -176,6 +192,16 @@ func (bba *BBA) tryoutAgreement() {
 	bba.advanceRoundChan <- struct{}{}
 }
 
+func (bba *BBA) advanceRound() {
+	bba.bvalRepo = newBvalReqRepository()
+	bba.auxRepo = newAuxReqRepository()
+	bba.binValueSet = newBinarySet()
+
+	bba.round++
+
+	// TODO: handle delayed messages
+}
+
 func (bba *BBA) broadcast(typ pb.BBAType, req cleisthenes.Request) error {
 	payload, err := json.Marshal(req)
 	if err != nil {
@@ -206,11 +232,16 @@ func (bba *BBA) run() {
 		case req := <-bba.reqChan:
 			req.err <- bba.muxMessage(req.sender, req.data)
 		case <-bba.binValueChan:
-			// TODO: broadcast AUX message
+			// TODO: block if already broadcast AUX message for this round
+			for _, bin := range bba.binValueSet.toList() {
+				bba.broadcast(pb.BBA_AUX, &auxRequest{
+					Value: bin,
+				})
+			}
 		case <-bba.tryoutAgreementChan:
 			bba.tryoutAgreement()
 		case <-bba.advanceRoundChan:
-			// TODO: advance round and initialize new round
+			bba.advanceRound()
 		}
 	}
 }
