@@ -30,10 +30,19 @@ type Broadcaster struct {
 	BroadcastedMessageList []pb.Message
 }
 
-func (b *Broadcaster) ShareMessage(msg pb.Message) {
-	for _, conn := range b.ConnMap {
+func (p *Broadcaster) ShareMessage(msg pb.Message) {
+	for _, conn := range p.ConnMap {
 		conn.Send(msg, nil, nil)
 	}
 }
 
-func (b *Broadcaster) DistributeMessage(msgList []pb.Message) {}
+func (p *Broadcaster) DistributeMessage(msgList []pb.Message) {
+	cnt := 0
+	for _, conn := range p.ConnMap {
+		if cnt == len(msgList) {
+			break
+		}
+		conn.Send(msgList[cnt], nil, nil)
+		cnt++
+	}
+}
