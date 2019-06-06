@@ -3,23 +3,18 @@ package bba
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"sync"
 	"sync/atomic"
 
-	"github.com/DE-labtory/cleisthenes/pb"
 	"github.com/golang/protobuf/ptypes"
+
+	"github.com/DE-labtory/cleisthenes/pb"
 
 	"github.com/DE-labtory/cleisthenes"
 )
 
 var ErrUndefinedRequestType = errors.New("unexpected request type")
-
-type Binary = bool
-
-const (
-	one  Binary = true
-	zero        = false
-)
 
 type request struct {
 	sender cleisthenes.Member
@@ -52,7 +47,7 @@ type BBA struct {
 	broadcastedBvalSet *binarySet
 
 	// est is estimated value of BBA instance, dec is decision value
-	est, dec Binary
+	est, dec *cleisthenes.BinaryState
 
 	bvalRepo        cleisthenes.RequestRepository
 	auxRepo         cleisthenes.RequestRepository
@@ -62,17 +57,23 @@ type BBA struct {
 	closeChan           chan struct{}
 	binValueChan        chan struct{}
 	tryoutAgreementChan chan struct{}
+	advanceRoundChan    chan struct{}
 
 	broadcaster cleisthenes.Broadcaster
+
+	coinGenerator cleisthenes.CoinGenerator
 }
 
 func New(n int) *BBA {
 	return &BBA{
 		n:                   n,
+		est:                 cleisthenes.NewBinaryState(),
+		dec:                 cleisthenes.NewBinaryState(),
 		reqChan:             make(chan request),
 		closeChan:           make(chan struct{}),
 		binValueChan:        make(chan struct{}),
 		tryoutAgreementChan: make(chan struct{}),
+		advanceRoundChan:    make(chan struct{}),
 	}
 }
 
@@ -148,9 +149,31 @@ func (bba *BBA) handleAuxRequest(sender cleisthenes.Member, aux *auxRequest) err
 	return nil
 }
 
-// TODO: implement me w/ test cases
-func (bba *BBA) tryoutAgreement() error {
-	return nil
+func (bba *BBA) tryoutAgreement() {
+	if bba.done {
+		return
+	}
+	coin := bba.coinGenerator.Coin()
+
+	binList := bba.binValueSet.toList()
+	if len(binList) == 0 {
+		log.Fatalf("binary set is empty, but tried agreement")
+		return
+	}
+	if len(binList) > 1 {
+		bba.est.Set(cleisthenes.Binary(coin))
+		bba.advanceRoundChan <- struct{}{}
+		return
+	}
+
+	if binList[0] != cleisthenes.Binary(coin) {
+		bba.est.Set(binList[0])
+		bba.advanceRoundChan <- struct{}{}
+		return
+	}
+	bba.dec.Set(binList[0])
+	bba.done = true
+	bba.advanceRoundChan <- struct{}{}
 }
 
 func (bba *BBA) broadcast(typ pb.BBAType, req cleisthenes.Request) error {
@@ -186,6 +209,8 @@ func (bba *BBA) run() {
 			// TODO: broadcast AUX message
 		case <-bba.tryoutAgreementChan:
 			bba.tryoutAgreement()
+		case <-bba.advanceRoundChan:
+			// TODO: advance round and initialize new round
 		}
 	}
 }
@@ -212,7 +237,7 @@ func (bba *BBA) saveAuxIfNotExist(sender cleisthenes.Member, data *auxRequest) e
 	return bba.auxRepo.Save(sender.Address, data)
 }
 
-func (bba *BBA) countBvalByValue(val Binary) int {
+func (bba *BBA) countBvalByValue(val cleisthenes.Binary) int {
 	bvalList := bba.convToBvalList(bba.bvalRepo.FindAll())
 	count := 0
 	for _, bval := range bvalList {
@@ -223,7 +248,7 @@ func (bba *BBA) countBvalByValue(val Binary) int {
 	return count
 }
 
-func (bba *BBA) countAuxByValue(val Binary) int {
+func (bba *BBA) countAuxByValue(val cleisthenes.Binary) int {
 	auxList := bba.convToAuxList(bba.auxRepo.FindAll())
 	count := 0
 	for _, aux := range auxList {

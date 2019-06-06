@@ -4,11 +4,11 @@ import "github.com/DE-labtory/cleisthenes"
 
 type (
 	bvalRequest struct {
-		Value Binary
+		Value cleisthenes.Binary
 	}
 
 	auxRequest struct {
-		Value Binary
+		Value cleisthenes.Binary
 	}
 )
 
