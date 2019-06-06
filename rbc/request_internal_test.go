@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/DE-labtory/cleisthenes/rbc/merkletree"
+
 	"github.com/DE-labtory/cleisthenes"
 )
 
@@ -14,7 +16,7 @@ func TestValReqRepository_Find(t *testing.T) {
 	}
 
 	valReqList, _ := NewValReqRepository()
-	val := ValRequest{nil, nil, nil}
+	val := ValRequest{nil, merkletree.Data{}, nil, nil}
 	valReqList.Save(addr, &val)
 	_, ok := valReqList.Find(addr)
 	if ok != nil {
@@ -32,7 +34,7 @@ func TestValReqRepository_FindAll(t *testing.T) {
 	}
 
 	valReqList, _ := NewValReqRepository()
-	val := ValRequest{nil, nil, nil}
+	val := ValRequest{nil, merkletree.Data{}, nil, nil}
 	valReqList.Save(addr, &val)
 	valReqList.Save(addr2, &val)
 
@@ -53,7 +55,7 @@ func TestValReqRepository_Save(t *testing.T) {
 	}
 
 	valReqList, _ := NewValReqRepository()
-	val := ValRequest{nil, nil, nil}
+	val := ValRequest{nil, merkletree.Data{}, nil, nil}
 	valReqList.Save(addr, &val)
 	_, ok := valReqList.recv[addr]
 	if !ok {
@@ -79,7 +81,7 @@ func TestEchoReqRepository_Find(t *testing.T) {
 	}
 
 	echoReqList, _ := NewEchoReqRepository()
-	val := ValRequest{nil, nil, nil}
+	val := ValRequest{nil, merkletree.NewData(nil), nil, nil}
 	echo := EchoRequest{val}
 	echoReqList.Save(addr, &echo)
 	_, ok := echoReqList.Find(addr)
@@ -99,7 +101,7 @@ func TestEchoReqRepository_FindAll(t *testing.T) {
 	}
 
 	echoReqList, _ := NewEchoReqRepository()
-	val := ValRequest{nil, nil, nil}
+	val := ValRequest{nil, merkletree.NewData(nil), nil, nil}
 	echo := EchoRequest{val}
 	echoReqList.Save(addr, &echo)
 	echoReqList.Save(addr2, &echo)
@@ -120,7 +122,7 @@ func TestEchoReqRepository_Save(t *testing.T) {
 	}
 
 	echoReqList, _ := NewEchoReqRepository()
-	val := ValRequest{nil, nil, nil}
+	val := ValRequest{nil, merkletree.NewData(nil), nil, nil}
 	echo := EchoRequest{val}
 	echoReqList.Save(addr, &echo)
 	_, ok := echoReqList.recv[addr]
