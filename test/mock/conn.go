@@ -26,7 +26,7 @@ func (c *Connection) Start() error {
 func (c *Connection) Handle(handler cleisthenes.Handler) {}
 
 type Broadcaster struct {
-	ConnMap                map[cleisthenes.ConnId]Connection
+	ConnMap                map[cleisthenes.Address]Connection
 	BroadcastedMessageList []pb.Message
 }
 
