@@ -52,7 +52,7 @@ func TestGrpcServer(t *testing.T) {
 			conn.Close()
 		}
 	}
-	availablePort := GetAvailablePort(8000)
+	availablePort := cleisthenes.GetAvailablePort(8000)
 	server := cleisthenes.NewServer(cleisthenes.Address{Ip: "127.0.0.1", Port: availablePort})
 	server.OnConn(onConnection)
 	go server.Listen()

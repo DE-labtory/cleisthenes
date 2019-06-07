@@ -36,7 +36,7 @@ func (h *bbaTester) waitWithTimer(done chan struct{}) error {
 	}
 }
 
-func (h *bbaTester) setupBvalRequestList(bvalList []*bvalRequest) ([]request, error) {
+func (h *bbaTester) setupBvalRequestList(bvalList []*BvalRequest) ([]request, error) {
 	result := make([]request, 0)
 	for i, bval := range bvalList {
 		d, err := json.Marshal(bval)
@@ -56,7 +56,7 @@ func (h *bbaTester) setupBvalRequestList(bvalList []*bvalRequest) ([]request, er
 	return result, nil
 }
 
-func (h *bbaTester) setupAuxRequestList(bvalList []*auxRequest) ([]request, error) {
+func (h *bbaTester) setupAuxRequestList(bvalList []*AuxRequest) ([]request, error) {
 	result := make([]request, 0)
 	for i, bval := range bvalList {
 		d, err := json.Marshal(bval)
@@ -123,7 +123,7 @@ func (h *bbaTester) assert(i int) (func(t *testing.T, bbaInstance *BBA), bool) {
 	return f, ok
 }
 
-func setupHandleBvalRequestTest(t *testing.T, bvalList []*bvalRequest) (*BBA, *mock.Broadcaster, *bbaTester, func()) {
+func setupHandleBvalRequestTest(t *testing.T, bvalList []*BvalRequest) (*BBA, *mock.Broadcaster, *bbaTester, func()) {
 	tester := newBBATester()
 	reqList, err := tester.setupBvalRequestList(bvalList)
 	if err != nil {
@@ -148,7 +148,7 @@ func setupHandleBvalRequestTest(t *testing.T, bvalList []*bvalRequest) (*BBA, *m
 
 func TestBBA_HandleBvalRequest(t *testing.T) {
 	done := make(chan struct{})
-	bvalList := []*bvalRequest{
+	bvalList := []*BvalRequest{
 		{Value: cleisthenes.One},
 		{Value: cleisthenes.One},
 		{Value: cleisthenes.One},
@@ -181,7 +181,7 @@ func TestBBA_HandleBvalRequest(t *testing.T) {
 			if !ok {
 				t.Fatalf("expected payload type is %+v, but got %+v", pb.Message_Bba{}, req)
 			}
-			receivedBval := &bvalRequest{}
+			receivedBval := &BvalRequest{}
 			if err := json.Unmarshal(req.Bba.Payload, receivedBval); err != nil {
 				t.Fatalf("unmarshal bval request failed with error: %s", err.Error())
 			}
@@ -217,7 +217,7 @@ func TestBBA_HandleBvalRequest(t *testing.T) {
 }
 
 func TestBBA_HandleBvalRequest_OneZeroCombined(t *testing.T) {
-	bvalList := []*bvalRequest{
+	bvalList := []*BvalRequest{
 		{Value: cleisthenes.One},  // 0. (one, zero) = (1, 0)
 		{Value: cleisthenes.Zero}, // 1. (one, zero) = (1, 1)
 		{Value: cleisthenes.Zero}, // 2. (one, zero) = (1, 2)
@@ -260,7 +260,7 @@ func TestBBA_HandleBvalRequest_OneZeroCombined(t *testing.T) {
 			if !ok {
 				t.Fatalf("expected payload type is %+v, but got %+v", pb.Message_Bba{}, req)
 			}
-			receivedBval := &bvalRequest{}
+			receivedBval := &BvalRequest{}
 			if err := json.Unmarshal(req.Bba.Payload, receivedBval); err != nil {
 				t.Fatalf("unmarshal bval request failed with error: %s", err.Error())
 			}
@@ -285,7 +285,7 @@ func TestBBA_HandleBvalRequest_OneZeroCombined(t *testing.T) {
 			if !ok {
 				t.Fatalf("expected payload type is %+v, but got %+v", pb.Message_Bba{}, req)
 			}
-			receivedBval := &bvalRequest{}
+			receivedBval := &BvalRequest{}
 			if err := json.Unmarshal(req.Bba.Payload, receivedBval); err != nil {
 				t.Fatalf("unmarshal bval request failed with error: %s", err.Error())
 			}
@@ -322,7 +322,7 @@ func TestBBA_HandleBvalRequest_OneZeroCombined(t *testing.T) {
 	done <- struct{}{}
 }
 
-func setupHandleAuxRequestTest(t *testing.T, auxList []*auxRequest) (*BBA, *mock.Broadcaster, *bbaTester, func()) {
+func setupHandleAuxRequestTest(t *testing.T, auxList []*AuxRequest) (*BBA, *mock.Broadcaster, *bbaTester, func()) {
 	tester := newBBATester()
 	reqList, err := tester.setupAuxRequestList(auxList)
 	if err != nil {
@@ -350,7 +350,7 @@ func setupHandleAuxRequestTest(t *testing.T, auxList []*auxRequest) (*BBA, *mock
 func TestBBA_HandleAuxRequest(t *testing.T) {
 	done := make(chan struct{})
 
-	auxList := []*auxRequest{
+	auxList := []*AuxRequest{
 		{Value: cleisthenes.One},
 		{Value: cleisthenes.One},
 		{Value: cleisthenes.One},
@@ -376,7 +376,7 @@ func TestBBA_HandleAuxRequest(t *testing.T) {
 			t.Fatalf("expected request list length is %d, but got %d", 7, len(reqList))
 		}
 		for i, req := range reqList {
-			aux, ok := req.(*auxRequest)
+			aux, ok := req.(*AuxRequest)
 			if !ok {
 				t.Fatalf("request is not auxRequest type: [%d]", i)
 			}
@@ -409,7 +409,7 @@ func TestBBA_HandleAuxRequest(t *testing.T) {
 func TestBBA_HandleAuxRequest_OneZeroCombined(t *testing.T) {
 	done := make(chan struct{})
 
-	auxList := []*auxRequest{
+	auxList := []*AuxRequest{
 		{Value: cleisthenes.One},  // 0. (one, zero) = (1, 0)
 		{Value: cleisthenes.Zero}, // 1. (one, zero) = (1, 1)
 		{Value: cleisthenes.Zero}, // 2. (one, zero) = (1, 2)
@@ -442,7 +442,7 @@ func TestBBA_HandleAuxRequest_OneZeroCombined(t *testing.T) {
 
 		oneCount := 0
 		for i, req := range reqList {
-			aux, ok := req.(*auxRequest)
+			aux, ok := req.(*AuxRequest)
 			if !ok {
 				t.Fatalf("request is not auxRequest type: [%d]", i)
 			}
