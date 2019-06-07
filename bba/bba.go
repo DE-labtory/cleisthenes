@@ -93,12 +93,23 @@ func New(n int, f int, epoch uint64, owner cleisthenes.Member, broadcaster cleis
 
 // HandleInput will set the given val as the initial value to be proposed in the
 // Agreement
-func (bba *BBA) HandleInput(msg *pb.Message_Bba) error {
+func (bba *BBA) HandleInput(bvalRequest *BvalRequest) error {
+	data, err := json.Marshal(bvalRequest)
+	if err != nil {
+		return err
+	}
 	req := request{
 		sender: bba.owner,
-		data:   msg,
-		err:    make(chan error),
+		data: &pb.Message_Bba{
+			Bba: &pb.BBA{
+				Payload: data,
+				Round:   bba.round,
+				Type:    pb.BBA_BVAL,
+			},
+		},
+		err: make(chan error),
 	}
+	bba.broadcast(pb.BBA_BVAL, bvalRequest)
 	bba.reqChan <- req
 	return <-req.err
 }
@@ -269,7 +280,7 @@ func (bba *BBA) run() {
 
 func (bba *BBA) saveBvalIfNotExist(sender cleisthenes.Member, data *BvalRequest) error {
 	r, err := bba.bvalRepo.Find(sender.Address)
-	if err != nil {
+	if err != nil && !IsErrNoResult(err) {
 		return err
 	}
 	if r != nil {
@@ -280,7 +291,7 @@ func (bba *BBA) saveBvalIfNotExist(sender cleisthenes.Member, data *BvalRequest)
 
 func (bba *BBA) saveAuxIfNotExist(sender cleisthenes.Member, data *AuxRequest) error {
 	r, err := bba.auxRepo.Find(sender.Address)
-	if err != nil {
+	if err != nil && !IsErrNoResult(err) {
 		return err
 	}
 	if r != nil {

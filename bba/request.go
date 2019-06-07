@@ -1,15 +1,11 @@
 package bba
 
 import (
-	"errors"
 	"sync"
 
 	"github.com/DE-labtory/cleisthenes"
 	"github.com/DE-labtory/cleisthenes/pb"
 )
-
-var ErrNoIdMatchingRequest = errors.New("id is not found.")
-var ErrInvalidReqType = errors.New("request is not matching with type.")
 
 type (
 	BvalRequest struct {
@@ -48,21 +44,23 @@ func (r *bvalReqRepository) Save(addr cleisthenes.Address, req cleisthenes.Reque
 
 	bvalReq, ok := req.(*BvalRequest)
 	if !ok {
-		return ErrInvalidReqType
+		return ErrInvalidType
 	}
 	r.reqMap[addr] = bvalReq
 	return nil
 }
+
 func (r *bvalReqRepository) Find(addr cleisthenes.Address) (cleisthenes.Request, error) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
 	req, ok := r.reqMap[addr]
 	if !ok {
-		return nil, ErrNoIdMatchingRequest
+		return nil, ErrNoResult
 	}
 	return req, nil
 }
+
 func (r *bvalReqRepository) FindAll() []cleisthenes.Request {
 	r.lock.Lock()
 	defer r.lock.Unlock()
@@ -86,21 +84,23 @@ func (r *auxReqRepository) Save(addr cleisthenes.Address, req cleisthenes.Reques
 
 	auxReq, ok := req.(*AuxRequest)
 	if !ok {
-		return ErrInvalidReqType
+		return ErrInvalidType
 	}
 	r.reqMap[addr] = auxReq
 	return nil
 }
+
 func (r *auxReqRepository) Find(addr cleisthenes.Address) (cleisthenes.Request, error) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
 	req, ok := r.reqMap[addr]
 	if !ok {
-		return nil, ErrNoIdMatchingRequest
+		return nil, ErrNoResult
 	}
 	return req, nil
 }
+
 func (r *auxReqRepository) FindAll() []cleisthenes.Request {
 	r.lock.Lock()
 	defer r.lock.Unlock()
