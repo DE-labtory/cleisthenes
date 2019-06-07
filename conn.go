@@ -200,8 +200,8 @@ func NewConnectionPool() *ConnectionPool {
 }
 
 func (p *ConnectionPool) GetAll() []Connection {
-	p.lock.Lock()
-	defer p.lock.Unlock()
+	p.lock.RLock()
+	defer p.lock.RUnlock()
 
 	connList := make([]Connection, 0)
 	for _, conn := range p.connMap {

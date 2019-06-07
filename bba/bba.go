@@ -7,7 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/it-chain/iLogger"
+	"github.com/DE-labtory/iLogger"
 
 	"github.com/golang/protobuf/ptypes"
 
@@ -20,7 +20,8 @@ var ErrUndefinedRequestType = errors.New("unexpected request type")
 
 type request struct {
 	sender cleisthenes.Member
-	data   *pb.Message_Bba
+	data   cleisthenes.Request
+	round  uint64
 	err    chan error
 }
 
@@ -78,11 +79,11 @@ func New(n int, f int, epoch uint64, owner cleisthenes.Member, broadcaster cleis
 		auxRepo:         newAuxReqRepository(),
 		incomingReqRepo: newDefaultIncomingRequestRepository(),
 
-		reqChan:             make(chan request),
-		closeChan:           make(chan struct{}),
-		binValueChan:        make(chan struct{}),
-		tryoutAgreementChan: make(chan struct{}),
-		advanceRoundChan:    make(chan struct{}),
+		reqChan:             make(chan request, n),
+		closeChan:           make(chan struct{}, 1),
+		binValueChan:        make(chan struct{}, 1),
+		tryoutAgreementChan: make(chan struct{}, 1),
+		advanceRoundChan:    make(chan struct{}, 1),
 
 		broadcaster:   broadcaster,
 		coinGenerator: coinGenerator,
@@ -94,35 +95,33 @@ func New(n int, f int, epoch uint64, owner cleisthenes.Member, broadcaster cleis
 // HandleInput will set the given val as the initial value to be proposed in the
 // Agreement
 func (bba *BBA) HandleInput(bvalRequest *BvalRequest) error {
-	data, err := json.Marshal(bvalRequest)
-	if err != nil {
-		return err
-	}
 	req := request{
 		sender: bba.owner,
-		data: &pb.Message_Bba{
-			Bba: &pb.BBA{
-				Payload: data,
-				Round:   bba.round,
-				Type:    pb.BBA_BVAL,
-			},
-		},
-		err: make(chan error),
+		data:   bvalRequest,
+		round:  bba.round,
+		err:    make(chan error),
 	}
-	bba.broadcast(pb.BBA_BVAL, bvalRequest)
+	if err := bba.broadcast(bvalRequest); err != nil {
+		return err
+	}
 	bba.reqChan <- req
 	return <-req.err
 }
 
 // HandleMessage will process the given rpc message.
 func (bba *BBA) HandleMessage(sender cleisthenes.Member, msg *pb.Message_Bba) error {
-	req := request{
+	req, round, err := processMessage(msg)
+	if err != nil {
+		return err
+	}
+	r := request{
 		sender: sender,
-		data:   msg,
+		data:   req,
+		round:  round,
 		err:    make(chan error),
 	}
-	bba.reqChan <- req
-	return <-req.err
+	bba.reqChan <- r
+	return <-r.err
 }
 
 func (bba *BBA) Result() cleisthenes.BinaryState {
@@ -135,24 +134,17 @@ func (bba *BBA) Close() {
 	}
 	bba.closeChan <- struct{}{}
 	<-bba.closeChan
+	close(bba.reqChan)
 }
 
-func (bba *BBA) muxMessage(sender cleisthenes.Member, msg *pb.Message_Bba) error {
+func (bba *BBA) muxMessage(sender cleisthenes.Member, round uint64, req cleisthenes.Request) error {
 	// TODO: save message if round is larger
 
-	switch msg.Bba.Type {
-	case pb.BBA_BVAL:
-		bval := &BvalRequest{}
-		if err := json.Unmarshal(msg.Bba.Payload, bval); err != nil {
-			return err
-		}
-		return bba.handleBvalRequest(sender, bval)
-	case pb.BBA_AUX:
-		aux := &AuxRequest{}
-		if err := json.Unmarshal(msg.Bba.Payload, aux); err != nil {
-			return err
-		}
-		return bba.handleAuxRequest(sender, aux)
+	switch r := req.(type) {
+	case *BvalRequest:
+		return bba.handleBvalRequest(sender, r)
+	case *AuxRequest:
+		return bba.handleAuxRequest(sender, r)
 	default:
 		return ErrUndefinedRequestType
 	}
@@ -164,13 +156,15 @@ func (bba *BBA) handleBvalRequest(sender cleisthenes.Member, bval *BvalRequest) 
 	}
 	count := bba.countBvalByValue(bval.Value)
 	if count == bba.binValueSetThreshold() {
+		iLogger.Infof(nil, "action: reached bin value set condition, from: %s", bba.owner.Address.String())
 		bba.binValueSet.union(bval.Value)
 		bba.binValueChan <- struct{}{}
 		return nil
 	}
 	if count == bba.bvalBroadcastThreshold() && !bba.broadcastedBvalSet.exist(bval.Value) {
 		bba.broadcastedBvalSet.union(bval.Value)
-		return bba.broadcast(pb.BBA_BVAL, bval)
+		iLogger.Infof(nil, "action: reached bval broadcast condition, from: %s", bba.owner.Address.String())
+		return bba.broadcast(bval)
 	}
 	return nil
 }
@@ -224,17 +218,27 @@ func (bba *BBA) advanceRound() {
 	// TODO: handle delayed messages
 }
 
-func (bba *BBA) broadcast(typ pb.BBAType, req cleisthenes.Request) error {
+func (bba *BBA) broadcast(req cleisthenes.Request) error {
+	var typ pb.BBAType
+	switch req.(type) {
+	case *BvalRequest:
+		typ = pb.BBA_BVAL
+	case *AuxRequest:
+		typ = pb.BBA_AUX
+	default:
+		return errors.New("invalid broadcast message type")
+	}
 	payload, err := json.Marshal(req)
 	if err != nil {
 		return err
 	}
 	bba.broadcaster.ShareMessage(pb.Message{
+		Sender:    bba.owner.Address.String(),
 		Timestamp: ptypes.TimestampNow(),
 		Payload: &pb.Message_Bba{
 			Bba: &pb.BBA{
 				Round:   bba.round,
-				Type:    pb.BBA_BVAL,
+				Type:    typ,
 				Payload: payload,
 			},
 		},
@@ -252,27 +256,27 @@ func (bba *BBA) run() {
 		case <-bba.closeChan:
 			bba.closeChan <- struct{}{}
 		case req := <-bba.reqChan:
-			iLogger.Infof(nil, "action: handleMessage, type: %s, from: %s", req.data.Bba.Type, req.sender.Address.String())
-			err := bba.muxMessage(req.sender, req.data)
+			iLogger.Infof(nil, "action: handleMessage, type: %T, from: %s", req.data, req.sender.Address.String())
+			err := bba.muxMessage(req.sender, req.round, req.data)
 			if err != nil {
-				iLogger.Errorf(nil, "action: handleMessage, type: %s, from: %s, err=%s", req.data.Bba.Type, req.sender.Address.String(), err)
+				iLogger.Errorf(nil, "action: handleMessage, type: %s, from: %s, err=%s", req.data, req.sender.Address.String(), err)
 			}
 			req.err <- err
 		case <-bba.binValueChan:
 			// TODO: block if already broadcast AUX message for this round
-			iLogger.Infof(nil, "action: broadcastBinValue")
+			iLogger.Infof(nil, "action: broadcastBinValue, from: %s", bba.owner.Address.String())
 			for _, bin := range bba.binValueSet.toList() {
-				if err := bba.broadcast(pb.BBA_AUX, &AuxRequest{
+				if err := bba.broadcast(&AuxRequest{
 					Value: bin,
 				}); err != nil {
 					iLogger.Errorf(nil, "action: handleMessage, err=%s", err)
 				}
 			}
 		case <-bba.tryoutAgreementChan:
-			iLogger.Infof(nil, "action: tryoutAgreement")
+			iLogger.Infof(nil, "action: tryoutAgreement, from: %s", bba.owner.Address.String())
 			bba.tryoutAgreement()
 		case <-bba.advanceRoundChan:
-			iLogger.Infof(nil, "action: advanceRound")
+			iLogger.Infof(nil, "action: advanceRound, from: %s", bba.owner.Address.String())
 			bba.advanceRound()
 		}
 	}
@@ -348,4 +352,31 @@ func (bba *BBA) binValueSetThreshold() int {
 
 func (bba *BBA) tryoutAgreementThreshold() int {
 	return bba.n - bba.f
+}
+
+func processMessage(msg *pb.Message_Bba) (cleisthenes.Request, uint64, error) {
+	switch msg.Bba.Type {
+	case pb.BBA_BVAL:
+		return processBvalMessage(msg)
+	case pb.BBA_AUX:
+		return processAuxMessage(msg)
+	default:
+		return nil, 0, errors.New("error processing message with invalid type")
+	}
+}
+
+func processBvalMessage(msg *pb.Message_Bba) (cleisthenes.Request, uint64, error) {
+	req := &BvalRequest{}
+	if err := json.Unmarshal(msg.Bba.Payload, req); err != nil {
+		return nil, 0, err
+	}
+	return req, msg.Bba.Round, nil
+}
+
+func processAuxMessage(msg *pb.Message_Bba) (cleisthenes.Request, uint64, error) {
+	req := &AuxRequest{}
+	if err := json.Unmarshal(msg.Bba.Payload, req); err != nil {
+		return nil, 0, err
+	}
+	return req, msg.Bba.Round, nil
 }
