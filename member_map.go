@@ -2,6 +2,9 @@ package cleisthenes
 
 import (
 	"fmt"
+	"net"
+	"net/url"
+	"strconv"
 	"sync"
 )
 
@@ -12,6 +15,25 @@ type Address struct {
 
 func (a Address) String() string {
 	return fmt.Sprintf("%s:%d", a.Ip, a.Port)
+}
+
+func ToAddress(addrStr string) (Address, error) {
+	u, err := url.Parse(addrStr)
+	if err != nil {
+		return Address{}, err
+	}
+	host, port, err := net.SplitHostPort(u.Host)
+	if err != nil {
+		return Address{}, err
+	}
+	portUint, err := strconv.ParseUint(port, 16, 16)
+	if err != nil {
+		return Address{}, err
+	}
+	return Address{
+		Ip:   host,
+		Port: uint16(portUint),
+	}, nil
 }
 
 // Member contains node information who participate in the network

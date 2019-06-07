@@ -13,15 +13,17 @@ message Message {
     // The signature of source node who sent this message
     bytes signature = 1;
 
+    string sender = 2;
+
     // The time when the source sends
-    google.protobuf.Timestamp timestamp = 2;
+    google.protobuf.Timestamp timestamp = 3;
 
     // message's epoch
-    uint64 epoch = 3;
+    uint64 epoch = 4;
 
     oneof payload {
-        RBC rbc = 4;
-        BBA bba = 5;
+        RBC rbc = 5;
+        BBA bba = 6;
     }
 }
 

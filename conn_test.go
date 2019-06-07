@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
-	"net"
 	"reflect"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/DE-labtory/cleisthenes/test/util"
 
 	"github.com/DE-labtory/cleisthenes"
 	"github.com/DE-labtory/cleisthenes/pb"
@@ -28,27 +29,12 @@ func NewMockHandler(done chan struct{}) *MockHandler {
 	}
 }
 
-func GetAvailablePort(startPort uint16) uint16 {
-	portNumber := startPort
-	for {
-		strPortNumber := strconv.Itoa(int(portNumber))
-		lis, err := net.Listen("tcp", "127.0.0.1:"+strPortNumber)
-
-		if err == nil {
-			_ = lis.Close()
-			return portNumber
-		}
-
-		portNumber++
-	}
-}
-
 func (h *MockHandler) ServeRequest(msg cleisthenes.Message) {
 	h.ServeRequestFunc(msg)
 }
 
 func TestGrpcConnection_Send(t *testing.T) {
-	cAddress := cleisthenes.Address{"127.0.0.1", GetAvailablePort(8000)}
+	cAddress := cleisthenes.Address{"127.0.0.1", util.GetAvailablePort(8000)}
 
 	mockStreamWrapper := mock.NewStreamWrapper()
 	conn, err := cleisthenes.NewConnection(cAddress, "127.0.0.1:8081", mockStreamWrapper)
@@ -92,7 +78,7 @@ func TestGrpcConnection_Send(t *testing.T) {
 }
 
 func TestGrpcConnection_GetIP(t *testing.T) {
-	cAddress := cleisthenes.Address{"127.0.0.1", GetAvailablePort(8000)}
+	cAddress := cleisthenes.Address{"127.0.0.1", util.GetAvailablePort(8000)}
 
 	mockStreamWrapper := mock.NewStreamWrapper()
 
@@ -126,7 +112,7 @@ func TestGrpcConnection_GetID(t *testing.T) {
 }
 
 func TestGrpcConnection_Close(t *testing.T) {
-	cAddress := cleisthenes.Address{"127.0.0.1", GetAvailablePort(8000)}
+	cAddress := cleisthenes.Address{"127.0.0.1", util.GetAvailablePort(8000)}
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)

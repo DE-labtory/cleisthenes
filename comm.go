@@ -79,7 +79,7 @@ func (s *GrpcServer) OnErr(handler ErrHandler) {
 func (s *GrpcServer) Listen() {
 	lis, err := net.Listen("tcp", s.addr.String())
 	if err != nil {
-		iLogger.Errorf(nil, "listen error: %s", err.Error())
+		iLogger.Fatalf(nil, "listen error: %s", err.Error())
 	}
 	defer lis.Close()
 
