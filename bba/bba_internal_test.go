@@ -39,38 +39,20 @@ func (h *bbaTester) waitWithTimer(done chan struct{}) error {
 func (h *bbaTester) setupBvalRequestList(bvalList []*BvalRequest) ([]request, error) {
 	result := make([]request, 0)
 	for i, bval := range bvalList {
-		d, err := json.Marshal(bval)
-		if err != nil {
-			return nil, err
-		}
 		result = append(result, request{
 			sender: cleisthenes.Member{Address: cleisthenes.Address{Ip: "localhost" + strconv.Itoa(i), Port: 8080}},
-			data: &pb.Message_Bba{
-				Bba: &pb.BBA{
-					Type:    pb.BBA_BVAL,
-					Payload: d,
-				},
-			},
+			data:   bval,
 		})
 	}
 	return result, nil
 }
 
-func (h *bbaTester) setupAuxRequestList(bvalList []*AuxRequest) ([]request, error) {
+func (h *bbaTester) setupAuxRequestList(auxList []*AuxRequest) ([]request, error) {
 	result := make([]request, 0)
-	for i, bval := range bvalList {
-		d, err := json.Marshal(bval)
-		if err != nil {
-			return nil, err
-		}
+	for i, aux := range auxList {
 		result = append(result, request{
 			sender: cleisthenes.Member{Address: cleisthenes.Address{Ip: "localhost" + strconv.Itoa(i), Port: 8080}},
-			data: &pb.Message_Bba{
-				Bba: &pb.BBA{
-					Type:    pb.BBA_AUX,
-					Payload: d,
-				},
-			},
+			data:   aux,
 		})
 	}
 	return result, nil

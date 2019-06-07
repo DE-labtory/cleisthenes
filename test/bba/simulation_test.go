@@ -1,13 +1,54 @@
 package bba_test
 
 import (
+	"sync"
 	"testing"
 	"time"
+
+	"github.com/DE-labtory/iLogger"
 
 	"github.com/DE-labtory/cleisthenes"
 	"github.com/DE-labtory/cleisthenes/test/bba"
 	"github.com/DE-labtory/cleisthenes/test/util"
 )
+
+type simulationResult struct {
+	lock       sync.RWMutex
+	outputList []output
+}
+
+func newSimulationResult() *simulationResult {
+	return &simulationResult{
+		lock:       sync.RWMutex{},
+		outputList: make([]output, 0),
+	}
+}
+
+func (r *simulationResult) contain(addr cleisthenes.Address) bool {
+	for _, out := range r.outputList {
+		if out.addr.String() == addr.String() {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *simulationResult) append(out output) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	r.outputList = append(r.outputList, out)
+}
+
+func (r *simulationResult) print() {
+	for _, out := range r.outputList {
+		iLogger.Infof(nil, "addr: %s, value: %v", out.addr, out.value)
+	}
+}
+
+type output struct {
+	addr  cleisthenes.Address
+	value cleisthenes.Binary
+}
 
 func TestBBA(t *testing.T) {
 	n := 4
@@ -25,7 +66,7 @@ func TestBBA(t *testing.T) {
 		}
 		nodeList = append(nodeList, node)
 		node.Run()
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	for i, node := range nodeList {
@@ -36,6 +77,7 @@ func TestBBA(t *testing.T) {
 			if err := node.Connect(target.Info()); err != nil {
 				t.Fatalf("failed to connect to target node: %s", target.Info().String())
 			}
+			time.Sleep(100 * time.Millisecond)
 		}
 	}
 
@@ -45,17 +87,20 @@ func TestBBA(t *testing.T) {
 		}
 	}
 
+	simulationResult := newSimulationResult()
 	for {
-		outputList := make([]cleisthenes.BinaryState, 0)
 		for _, node := range nodeList {
 			result := node.Result()
-			if !result.Undefined() {
-				outputList = append(outputList, result)
+			if !result.Undefined() && !simulationResult.contain(node.Info()) {
+				simulationResult.append(output{
+					addr: node.Info(), value: result.Value()})
 			}
 
 		}
-		if len(outputList) == n {
+		if len(simulationResult.outputList) == n {
 			break
 		}
 	}
+
+	simulationResult.print()
 }

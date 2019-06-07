@@ -1,13 +1,11 @@
 package bba
 
 import (
-	"encoding/json"
-	"log"
-
 	"github.com/DE-labtory/cleisthenes"
 	engine "github.com/DE-labtory/cleisthenes/bba"
 	"github.com/DE-labtory/cleisthenes/pb"
 	"github.com/DE-labtory/cleisthenes/test/mock"
+	"github.com/DE-labtory/iLogger"
 )
 
 const initialEpoch = 1
@@ -36,40 +34,38 @@ type Node struct {
 }
 
 func New(n, f int, addr cleisthenes.Address) (*Node, error) {
+	member := &cleisthenes.Member{Address: addr}
 	connPool := cleisthenes.NewConnectionPool()
-	member := cleisthenes.Member{
-		Address: addr,
-	}
-	bba := engine.New(n, f, initialEpoch, member, connPool, &mock.CoinGenerator{})
+	memberMap := cleisthenes.NewMemberMap()
+	bba := engine.New(n, f, initialEpoch, *member, connPool, &mock.CoinGenerator{})
 	return &Node{
 		addr:       addr,
 		bba:        bba,
 		grpcServer: cleisthenes.NewServer(addr),
 		grpcClient: cleisthenes.NewClient(),
 		connPool:   connPool,
-		memberMap:  cleisthenes.NewMemberMap(),
+		memberMap:  memberMap,
 	}, nil
 }
 
 func (n *Node) Run() {
 	handler := newHandler(func(msg cleisthenes.Message) {
+		iLogger.Infof(nil, "action: handling message, owner: %s, from: %s", n.Info().String(), msg.Sender)
 		bbaMessage, ok := msg.Message.Payload.(*pb.Message_Bba)
 		if !ok {
-			log.Fatalf("[handler] received message is not Message_Bba type")
+			iLogger.Fatalf(nil, "[handler] received message is not Message_Bba type")
 		}
 		addr, err := cleisthenes.ToAddress(msg.Sender)
 		if err != nil {
-			log.Fatalf("[handler] failed to parse sender address: addr=%s", addr)
+			iLogger.Fatalf(nil, "[handler] failed to parse sender address: addr=%s", addr)
 		}
 		n.bba.HandleMessage(n.memberMap.Member(addr), bbaMessage)
 	})
 
 	n.grpcServer.OnConn(func(conn cleisthenes.Connection) {
-		log.Println("[server] on connection")
-
-		n.connPool.Add(conn.Ip(), conn)
-
+		iLogger.Infof(nil, "server: on connection, from: %s", n.Info())
 		conn.Handle(handler)
+
 		if err := conn.Start(); err != nil {
 			conn.Close()
 		}
@@ -86,23 +82,22 @@ func (n *Node) Connect(addr cleisthenes.Address) error {
 	if err != nil {
 		return err
 	}
+	go func() {
+		iLogger.Infof(nil, "client: connection start, from: %s", n.Info())
+		if err := conn.Start(); err != nil {
+			conn.Close()
+		}
+	}()
 
 	n.connPool.Add(addr, conn)
+	n.memberMap.Add(&cleisthenes.Member{Address: addr})
+
 	return nil
 }
 
 func (n *Node) Propose(bin cleisthenes.Binary) error {
 	bvalRequest := &engine.BvalRequest{Value: bin}
-	data, err := json.Marshal(bvalRequest)
-	if err != nil {
-		return err
-	}
-	return n.bba.HandleInput(&pb.Message_Bba{
-		Bba: &pb.BBA{
-			Payload: data,
-			Round:   1,
-		},
-	})
+	return n.bba.HandleInput(bvalRequest)
 }
 
 func (n *Node) Close() {

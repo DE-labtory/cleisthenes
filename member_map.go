@@ -3,7 +3,6 @@ package cleisthenes
 import (
 	"fmt"
 	"net"
-	"net/url"
 	"strconv"
 	"sync"
 )
@@ -18,15 +17,11 @@ func (a Address) String() string {
 }
 
 func ToAddress(addrStr string) (Address, error) {
-	u, err := url.Parse(addrStr)
+	host, port, err := net.SplitHostPort(addrStr)
 	if err != nil {
 		return Address{}, err
 	}
-	host, port, err := net.SplitHostPort(u.Host)
-	if err != nil {
-		return Address{}, err
-	}
-	portUint, err := strconv.ParseUint(port, 16, 16)
+	portUint, err := strconv.ParseUint(port, 10, 16)
 	if err != nil {
 		return Address{}, err
 	}
