@@ -4,7 +4,6 @@ import (
 	"sync"
 
 	"github.com/DE-labtory/cleisthenes"
-	"github.com/DE-labtory/cleisthenes/pb"
 )
 
 type (
@@ -113,29 +112,42 @@ func (r *auxReqRepository) FindAll() []cleisthenes.Request {
 }
 
 type incomingRequestRepository interface {
-	Save(epoch uint64, addr cleisthenes.Address, req pb.BBA) error
-	Find(epoch uint64, addr cleisthenes.Address) pb.BBA
-	FindByEpoch(epoch uint64) []pb.BBA
+	Save(round uint64, addr cleisthenes.Address, req cleisthenes.Request)
+	Find(round uint64) map[cleisthenes.Address][]cleisthenes.Request
 }
 
 // incomingReqRepsoitory saves incoming messages sent from a node that is already
 // in a later epoch. These request will be saved and handled in the next epoch.
 type defaultIncomingReqRepository struct {
-	reqMap map[uint64]map[cleisthenes.Address]*pb.BBA
+	lock   sync.RWMutex
+	reqMap map[uint64]map[cleisthenes.Address][]cleisthenes.Request
 }
 
 func newDefaultIncomingRequestRepository() *defaultIncomingReqRepository {
 	return &defaultIncomingReqRepository{
-		reqMap: make(map[uint64]map[cleisthenes.Address]*pb.BBA),
+		lock:   sync.RWMutex{},
+		reqMap: make(map[uint64]map[cleisthenes.Address][]cleisthenes.Request),
 	}
 }
 
-func (r *defaultIncomingReqRepository) Save(epoch uint64, addr cleisthenes.Address, req pb.BBA) error {
-	return nil
+func (r *defaultIncomingReqRepository) Save(round uint64, addr cleisthenes.Address, req cleisthenes.Request) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	if r.reqMap[round][addr] == nil {
+		r.reqMap[round] = make(map[cleisthenes.Address][]cleisthenes.Request)
+		r.reqMap[round][addr] = make([]cleisthenes.Request, 0)
+	}
+	r.reqMap[round][addr] = append(r.reqMap[round][addr], req)
 }
-func (r *defaultIncomingReqRepository) Find(epoch uint64, addr cleisthenes.Address) pb.BBA {
-	return pb.BBA{}
-}
-func (r *defaultIncomingReqRepository) FindByEpoch(epoch uint64) []pb.BBA {
-	return nil
+
+func (r *defaultIncomingReqRepository) Find(round uint64) map[cleisthenes.Address][]cleisthenes.Request {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	result, ok := r.reqMap[round]
+	if !ok {
+		return map[cleisthenes.Address][]cleisthenes.Request{}
+	}
+	return result
 }

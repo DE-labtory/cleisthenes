@@ -4,11 +4,8 @@ import (
 	"github.com/DE-labtory/cleisthenes"
 	engine "github.com/DE-labtory/cleisthenes/bba"
 	"github.com/DE-labtory/cleisthenes/pb"
-	"github.com/DE-labtory/cleisthenes/test/mock"
 	"github.com/DE-labtory/iLogger"
 )
-
-const initialEpoch = 1
 
 type handler struct {
 	handleFunc func(msg cleisthenes.Message)
@@ -25,32 +22,31 @@ func (h *handler) ServeRequest(msg cleisthenes.Message) {
 }
 
 type Node struct {
-	addr       cleisthenes.Address
-	bba        *engine.BBA
-	grpcServer *cleisthenes.GrpcServer
-	grpcClient *cleisthenes.GrpcClient
-	connPool   *cleisthenes.ConnectionPool
-	memberMap  *cleisthenes.MemberMap
+	addr      cleisthenes.Address
+	bba       *engine.BBA
+	server    *cleisthenes.GrpcServer
+	client    *cleisthenes.GrpcClient
+	connPool  *cleisthenes.ConnectionPool
+	memberMap *cleisthenes.MemberMap
 }
 
-func New(n, f int, addr cleisthenes.Address) (*Node, error) {
+func New(n, f int, coinGenerator cleisthenes.CoinGenerator, addr cleisthenes.Address) (*Node, error) {
 	member := &cleisthenes.Member{Address: addr}
 	connPool := cleisthenes.NewConnectionPool()
 	memberMap := cleisthenes.NewMemberMap()
-	bba := engine.New(n, f, initialEpoch, *member, connPool, &mock.CoinGenerator{})
+	bba := engine.New(n, f, *member, connPool, coinGenerator)
 	return &Node{
-		addr:       addr,
-		bba:        bba,
-		grpcServer: cleisthenes.NewServer(addr),
-		grpcClient: cleisthenes.NewClient(),
-		connPool:   connPool,
-		memberMap:  memberMap,
+		addr:      addr,
+		bba:       bba,
+		server:    cleisthenes.NewServer(addr),
+		client:    cleisthenes.NewClient(),
+		connPool:  connPool,
+		memberMap: memberMap,
 	}, nil
 }
 
 func (n *Node) Run() {
 	handler := newHandler(func(msg cleisthenes.Message) {
-		iLogger.Infof(nil, "action: handling message, owner: %s, from: %s", n.Info().String(), msg.Sender)
 		bbaMessage, ok := msg.Message.Payload.(*pb.Message_Bba)
 		if !ok {
 			iLogger.Fatalf(nil, "[handler] received message is not Message_Bba type")
@@ -62,7 +58,7 @@ func (n *Node) Run() {
 		n.bba.HandleMessage(n.memberMap.Member(addr), bbaMessage)
 	})
 
-	n.grpcServer.OnConn(func(conn cleisthenes.Connection) {
+	n.server.OnConn(func(conn cleisthenes.Connection) {
 		iLogger.Infof(nil, "server: on connection, from: %s", n.Info())
 		conn.Handle(handler)
 
@@ -71,11 +67,11 @@ func (n *Node) Run() {
 		}
 	})
 
-	go n.grpcServer.Listen()
+	go n.server.Listen()
 }
 
 func (n *Node) Connect(addr cleisthenes.Address) error {
-	conn, err := n.grpcClient.Dial(cleisthenes.DialOpts{
+	conn, err := n.client.Dial(cleisthenes.DialOpts{
 		Addr:    addr,
 		Timeout: cleisthenes.DefaultDialTimeout,
 	})
@@ -83,7 +79,6 @@ func (n *Node) Connect(addr cleisthenes.Address) error {
 		return err
 	}
 	go func() {
-		iLogger.Infof(nil, "client: connection start, from: %s", n.Info())
 		if err := conn.Start(); err != nil {
 			conn.Close()
 		}
@@ -101,7 +96,7 @@ func (n *Node) Propose(bin cleisthenes.Binary) error {
 }
 
 func (n *Node) Close() {
-	n.grpcServer.Stop()
+	n.server.Stop()
 	for _, conn := range n.connPool.GetAll() {
 		conn.Close()
 	}
@@ -113,4 +108,8 @@ func (n *Node) Info() cleisthenes.Address {
 
 func (n *Node) Result() cleisthenes.BinaryState {
 	return n.bba.Result()
+}
+
+func (n *Node) Trace() {
+	n.bba.Trace()
 }
