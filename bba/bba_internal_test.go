@@ -13,7 +13,7 @@ import (
 	"github.com/DE-labtory/cleisthenes/test/mock"
 )
 
-var defaultTestTimeout = 3 * time.Second
+var defaultTestTimeout = 5 * time.Second
 
 type bbaTester struct {
 	timer     *time.Timer
@@ -58,27 +58,6 @@ func (h *bbaTester) setupAuxRequestList(auxList []*AuxRequest) ([]request, error
 	return result, nil
 }
 
-func (h *bbaTester) setupRequestRepository() cleisthenes.RequestRepository {
-	bvalRepo := &mock.RequestRepository{
-		ReqMap: make(map[cleisthenes.Address]cleisthenes.Request),
-	}
-	bvalRepo.SaveFunc = func(addr cleisthenes.Address, req cleisthenes.Request) error {
-		bvalRepo.ReqMap[addr] = req
-		return nil
-	}
-	bvalRepo.FindFunc = func(addr cleisthenes.Address) (cleisthenes.Request, error) {
-		return bvalRepo.ReqMap[addr], nil
-	}
-	bvalRepo.FindAllFunc = func() []cleisthenes.Request {
-		result := make([]cleisthenes.Request, 0)
-		for _, req := range bvalRepo.ReqMap {
-			result = append(result, req)
-		}
-		return result
-	}
-	return bvalRepo
-}
-
 func (h *bbaTester) setupBroadcaster(reqList []request) *mock.Broadcaster {
 	broadcaster := &mock.Broadcaster{
 		ConnMap:                make(map[cleisthenes.Address]mock.Connection),
@@ -111,17 +90,19 @@ func setupHandleBvalRequestTest(t *testing.T, bvalList []*BvalRequest) (*BBA, *m
 	if err != nil {
 		t.Fatalf("failed to setup request list: err=%s", err)
 	}
-	bvalRepo := tester.setupRequestRepository()
 	broadcaster := tester.setupBroadcaster(reqList)
-
 	bbaInstance := &BBA{
 		n:                  10,
 		f:                  3,
-		bvalRepo:           bvalRepo,
-		binValueChan:       make(chan struct{}),
+		broadcaster:        broadcaster,
+		bvalRepo:           newBvalReqRepository(),
+		auxRepo:            newAuxReqRepository(),
 		binValueSet:        newBinarySet(),
 		broadcastedBvalSet: newBinarySet(),
-		broadcaster:        broadcaster,
+
+		binValueChan:  make(chan struct{}, 10),
+		Tracer:        cleisthenes.NewMemCacheTracer(),
+		coinGenerator: mock.NewCoinGenerator(cleisthenes.Coin(cleisthenes.One)),
 	}
 	return bbaInstance, broadcaster, tester, func() {
 		close(bbaInstance.binValueChan)
@@ -310,27 +291,24 @@ func setupHandleAuxRequestTest(t *testing.T, auxList []*AuxRequest) (*BBA, *mock
 	if err != nil {
 		t.Fatalf("failed to setup request list: err=%s", err)
 	}
-	bvalRepo := tester.setupRequestRepository()
-	auxRepo := tester.setupRequestRepository()
 	broadcaster := tester.setupBroadcaster(reqList)
-
 	bbaInstance := &BBA{
 		n:                   10,
 		f:                   3,
-		bvalRepo:            bvalRepo,
-		auxRepo:             auxRepo,
-		tryoutAgreementChan: make(chan struct{}, 1),
-		binValueSet:         newBinarySet(),
-		broadcastedBvalSet:  newBinarySet(),
+		auxRepo:             newAuxReqRepository(),
 		broadcaster:         broadcaster,
+		tryoutAgreementChan: make(chan struct{}, 10),
+		Tracer:              cleisthenes.NewMemCacheTracer(),
+		coinGenerator:       mock.NewCoinGenerator(cleisthenes.Coin(cleisthenes.One)),
 	}
+
 	return bbaInstance, broadcaster, tester, func() {
 		close(bbaInstance.tryoutAgreementChan)
 	}
 }
 
 func TestBBA_HandleAuxRequest(t *testing.T) {
-	done := make(chan struct{})
+	done := make(chan struct{}, 1)
 
 	auxList := []*AuxRequest{
 		{Value: cleisthenes.One},
@@ -389,7 +367,7 @@ func TestBBA_HandleAuxRequest(t *testing.T) {
 }
 
 func TestBBA_HandleAuxRequest_OneZeroCombined(t *testing.T) {
-	done := make(chan struct{})
+	done := make(chan struct{}, 1)
 
 	auxList := []*AuxRequest{
 		{Value: cleisthenes.One},  // 0. (one, zero) = (1, 0)
@@ -399,7 +377,6 @@ func TestBBA_HandleAuxRequest_OneZeroCombined(t *testing.T) {
 		{Value: cleisthenes.One},  // 4. (one, zero) = (3, 2)
 		{Value: cleisthenes.One},  // 5. (one, zero) = (4, 2), one broadcasted
 		{Value: cleisthenes.Zero}, // 6. (one, zero) = (4, 3)
-		{Value: cleisthenes.Zero}, // 7. (one, zero) = (4, 4), zero broadcasted
 		{Value: cleisthenes.One},  // 8. (one, zero)  = (5, 4)
 		{Value: cleisthenes.One},  // 9. (one, zero) = (6, 4)
 		{Value: cleisthenes.One},  // 10. (one, zero) = (7, 4)
@@ -415,11 +392,10 @@ func TestBBA_HandleAuxRequest_OneZeroCombined(t *testing.T) {
 		done <- struct{}{}
 	}()
 
-	tester.setupAssert(10, func(t *testing.T, bbaInstance *BBA) {
-
+	tester.setupAssert(9, func(t *testing.T, bbaInstance *BBA) {
 		reqList := bbaInstance.auxRepo.FindAll()
-		if len(reqList) != 11 {
-			t.Fatalf("expected request list length is %d, but got %d", 11, len(reqList))
+		if len(reqList) != 10 {
+			t.Fatalf("expected request list length is %d, but got %d", 10, len(reqList))
 		}
 
 		oneCount := 0
@@ -458,16 +434,17 @@ func TestBBA_HandleAuxRequest_OneZeroCombined(t *testing.T) {
 }
 
 func tryoutAgreementTestSetup() (*BBA, *bbaTester, func()) {
-	coinGenerator := &mock.CoinGenerator{}
 	bbaInstance := &BBA{
-		n:                  10,
-		f:                  3,
-		coinGenerator:      coinGenerator,
-		advanceRoundChan:   make(chan struct{}, 1),
-		dec:                cleisthenes.NewBinaryState(),
-		est:                cleisthenes.NewBinaryState(),
-		binValueSet:        newBinarySet(),
-		broadcastedBvalSet: newBinarySet(),
+		n:                   10,
+		f:                   3,
+		binValueSet:         newBinarySet(),
+		done:                cleisthenes.NewBinaryState(),
+		est:                 cleisthenes.NewBinaryState(),
+		dec:                 cleisthenes.NewBinaryState(),
+		tryoutAgreementChan: make(chan struct{}, 10),
+		advanceRoundChan:    make(chan struct{}, 10),
+		Tracer:              cleisthenes.NewMemCacheTracer(),
+		coinGenerator:       mock.NewCoinGenerator(cleisthenes.Coin(cleisthenes.One)),
 	}
 	return bbaInstance, newBBATester(), func() {
 		close(bbaInstance.advanceRoundChan)
@@ -492,7 +469,7 @@ func TestBBA_TryoutAgreement_WhenBinValueSizeIsOne_AndSameWithCoinValue(t *testi
 	if bbaInstance.dec.Undefined() {
 		t.Fatal("expected decision value should not be undefined")
 	}
-	if !bbaInstance.done {
+	if !bbaInstance.done.Value() {
 		t.Fatalf("bba is not done")
 	}
 
@@ -522,7 +499,7 @@ func TestBBA_TryoutAgreement_WhenBinValueSizeIsOne_AndDifferentWithCoinValue(t *
 	if bbaInstance.est.Value() != cleisthenes.Zero {
 		t.Fatalf("expected estimation value is %v, but got %v", cleisthenes.Zero, bbaInstance.est)
 	}
-	if bbaInstance.done {
+	if bbaInstance.done.Value() {
 		t.Fatalf("bba should not be done")
 	}
 
@@ -553,7 +530,7 @@ func TestBBA_TryoutAgreement_WhenBinValueSizeIsTwo(t *testing.T) {
 	if bbaInstance.est.Value() != cleisthenes.Binary(mock.Coin) {
 		t.Fatalf("expected estimation value is %v, but got %v", cleisthenes.One, bbaInstance.est)
 	}
-	if bbaInstance.done {
+	if bbaInstance.done.Value() {
 		t.Fatalf("bba should not be done")
 	}
 
