@@ -107,8 +107,8 @@ func setUpValReqList(t *testing.T, n int, f int, data []byte) []*ValRequest {
 // send each node sharded data as VALUE request
 // each node handle message
 func Test_RBC_handleValueRequest(t *testing.T) {
-	var n int = 4
-	var f int = 1
+	n := 4
+	f := 1
 
 	data := []byte("this will be sharded")
 	valReqList := setUpValReqList(t, n, f, data)
@@ -172,8 +172,8 @@ func Test_RBC_handleValueRequest(t *testing.T) {
 // n0 sends VALUE message to n0, n1, n2, n3.
 // each nodes sends ECHO messages.
 func Test_RBC_handleEchoRequest(t *testing.T) {
-	var n int = 4
-	var f int = 1
+	n := 4
+	f := 1
 
 	memberMap := cleisthenes.NewMemberMap()
 	for idx := 0; idx < n; idx++ {
@@ -202,9 +202,14 @@ func Test_RBC_handleEchoRequest(t *testing.T) {
 	}
 }
 
-func Test_RBC_interpolate(t *testing.T) {
-	var n int = 4
-	var f int = 1
+type Data struct {
+	Field1 string
+	Field2 int
+}
+
+func Test_RBC_interpolate_primitive(t *testing.T) {
+	n := 4
+	f := 1
 
 	data := []byte("data block")
 	valReqs := setUpValReqList(t, 4, 1, data)
@@ -245,12 +250,73 @@ func Test_RBC_interpolate(t *testing.T) {
 	}
 }
 
+func Test_RBC_interpolate_struct(t *testing.T) {
+	n := 4
+	f := 1
+
+	data := Data{
+		Field1: "kim",
+		Field2: 26,
+	}
+
+	payload, err := json.Marshal(data)
+	if err != nil {
+		t.Fatalf("error in josn marshal : %s", err.Error())
+	}
+
+	valReqs := setUpValReqList(t, 4, 1, payload)
+	echoReqRepo := NewEchoReqRepository()
+
+	for idx, req := range valReqs {
+		addr := cleisthenes.Address{
+			Ip:   "127.0.0.1",
+			Port: uint16(8000 + idx),
+		}
+		echoReqRepo.Save(addr, &EchoRequest{*req})
+	}
+
+	enc, err := reedsolomon.New(n-2*f, 2*f)
+	if err != nil {
+		t.Fatalf("error in reedsolomon : %s", err.Error())
+	}
+
+	rbc := &RBC{
+		n:               n,
+		f:               f,
+		numDataShards:   n - 2*f,
+		numParityShards: 2 * f,
+		contentLength:   uint64(len(payload)),
+		enc:             enc,
+		echoReqRepo:     echoReqRepo,
+	}
+
+	rootHash := valReqs[0].RootHash
+
+	value, err := rbc.interpolate(rootHash)
+	if err != nil {
+		t.Fatalf("error in interpolate data : %s", err.Error())
+	}
+
+	if !bytes.Equal(payload, value) {
+		t.Fatalf("not equal original data and interpolated data (bytes) - expected : %x, got : %x", data, value)
+	}
+
+	interpolatedData := &Data{}
+	if err := json.Unmarshal(payload, interpolatedData); err != nil {
+		t.Fatalf("error in json unmarshal : %s", err.Error())
+	}
+
+	if !reflect.DeepEqual(*interpolatedData, data) {
+		t.Fatalf("not equal original data and interpolated data (struct)  - expected : %+v, got : %+v", data, interpolatedData)
+	}
+}
+
 func Test_MakeRequest(t *testing.T) {
-	var N int = 10
-	var F int = 3
+	n := 10
+	f := 3
 
 	data := []byte("data")
-	enc, err := reedsolomon.New(N-2*F, 2*F)
+	enc, err := reedsolomon.New(n-2*f, 2*f)
 	if err != nil {
 		t.Fatalf("error in reedsolomon : %s", err.Error())
 	}
@@ -265,18 +331,18 @@ func Test_MakeRequest(t *testing.T) {
 		t.Fatalf("error in makeRequest : %s", err.Error())
 	}
 
-	if len(reqs) != N {
-		t.Fatalf("not equal request size - expected=%d, got=%d", N, len(reqs))
+	if len(reqs) != n {
+		t.Fatalf("not equal request size - expected=%d, got=%d", n, len(reqs))
 	}
 
 }
 
 func Test_shard(t *testing.T) {
-	var N int = 10
-	var F int = 3
+	n := 10
+	f := 3
 
 	data := []byte("data")
-	enc, err := reedsolomon.New(N-2*F, 2*F)
+	enc, err := reedsolomon.New(n-2*f, 2*f)
 	if err != nil {
 		t.Fatalf("error in reedsolomon : %s", err.Error())
 	}
@@ -286,12 +352,12 @@ func Test_shard(t *testing.T) {
 		t.Fatalf("error in shard : %s", err.Error())
 	}
 
-	if len(shards) != N {
-		t.Fatalf("not equal shards size - expected=%d, got=%d", N, len(shards))
+	if len(shards) != n {
+		t.Fatalf("not equal shards size - expected=%d, got=%d", n, len(shards))
 	}
 
 	var value []byte
-	for _, data := range shards[:N-2*F] {
+	for _, data := range shards[:n-2*f] {
 		value = append(value, data.Bytes()...)
 	}
 
