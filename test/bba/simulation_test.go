@@ -168,10 +168,10 @@ func watchResult(nodeList []*bba.Node) *simulationResult {
 	simulationResult := newSimulationResult()
 	for {
 		for _, node := range nodeList {
-			result := node.Result()
-			if !result.Undefined() && !simulationResult.contain(node.Info()) {
+			result, ok := node.Result()
+			if !ok && !simulationResult.contain(node.Info()) {
 				simulationResult.append(output{
-					addr: node.Info(), value: result.Value()})
+					addr: node.Info(), value: result})
 			}
 		}
 

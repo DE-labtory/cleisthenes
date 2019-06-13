@@ -127,8 +127,8 @@ func (bba *BBA) HandleMessage(sender cleisthenes.Member, msg *pb.Message_Bba) er
 	return <-r.err
 }
 
-func (bba *BBA) Result() cleisthenes.BinaryState {
-	return *bba.dec
+func (bba *BBA) Result() (cleisthenes.Binary, bool) {
+	return bba.dec.Value(), bba.dec.Undefined()
 }
 
 func (bba *BBA) Close() {

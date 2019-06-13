@@ -106,7 +106,7 @@ func (n *Node) Info() cleisthenes.Address {
 	return n.addr
 }
 
-func (n *Node) Result() cleisthenes.BinaryState {
+func (n *Node) Result() (cleisthenes.Binary, bool) {
 	return n.bba.Result()
 }
 

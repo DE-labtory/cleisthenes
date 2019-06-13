@@ -10,12 +10,48 @@ import (
 	"github.com/DE-labtory/cleisthenes"
 	"github.com/DE-labtory/cleisthenes/pb"
 	"github.com/DE-labtory/cleisthenes/rbc/merkletree"
-	"github.com/DE-labtory/iLogger"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/klauspost/reedsolomon"
 )
 
-var ErrInvalidRBCType = errors.New("invalid RBC message type")
+type output struct {
+	sync.RWMutex
+	output []byte
+}
+
+func (o *output) set(output []byte) {
+	o.Lock()
+	defer o.Unlock()
+	o.output = output
+}
+
+func (o *output) value() []byte {
+	o.RLock()
+	defer o.RUnlock()
+	output := o.output
+	o.output = nil
+	return output
+}
+
+type contentLength struct {
+	sync.RWMutex
+	length uint64
+}
+
+func (c *contentLength) set(length uint64) error {
+	c.Lock()
+	defer c.Unlock()
+	if c.length == 0 {
+		c.length = length
+	}
+	return nil
+}
+
+func (c *contentLength) value() uint64 {
+	c.RLock()
+	defer c.RUnlock()
+	return c.length
+}
 
 type RBC struct {
 	// number of network nodes
@@ -34,10 +70,10 @@ type RBC struct {
 	enc reedsolomon.Encoder
 
 	// output of RBC
-	value []byte
+	output *output
 
 	// length of original data
-	contentLength uint64
+	contentLength *contentLength
 
 	// number of sharded data and parity
 	// data : N - F, parity : F
@@ -52,18 +88,17 @@ type RBC struct {
 	// internal channels to communicate with other components
 	closeChan chan struct{}
 	reqChan   chan request
-	lock      sync.RWMutex
 
 	broadcaster cleisthenes.Broadcaster
 }
 
-func New(n, f int, owner, proposer cleisthenes.Member, broadcaster cleisthenes.Broadcaster) *RBC {
+func New(n, f int, owner, proposer cleisthenes.Member, broadcaster cleisthenes.Broadcaster) (*RBC, error) {
 	numParityShards := 2 * f
 	numDataShards := n - numParityShards
 
 	enc, err := reedsolomon.New(numDataShards, numParityShards)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	echoReqRepo := NewEchoReqRepository()
@@ -74,6 +109,8 @@ func New(n, f int, owner, proposer cleisthenes.Member, broadcaster cleisthenes.B
 		owner:           owner,
 		proposer:        proposer,
 		enc:             enc,
+		output:          &output{sync.RWMutex{}, nil},
+		contentLength:   &contentLength{sync.RWMutex{}, 0},
 		numDataShards:   numDataShards,
 		numParityShards: numParityShards,
 		echoReqRepo:     echoReqRepo,
@@ -83,11 +120,10 @@ func New(n, f int, owner, proposer cleisthenes.Member, broadcaster cleisthenes.B
 		readySent:       cleisthenes.NewBinaryState(),
 		closeChan:       make(chan struct{}),
 		reqChan:         make(chan request),
-		lock:            sync.RWMutex{},
 		broadcaster:     broadcaster,
 	}
 	go rbc.run()
-	return rbc
+	return rbc, nil
 }
 
 func (rbc *RBC) distributeMessage(proposer cleisthenes.Member, reqs []cleisthenes.Request) error {
@@ -113,7 +149,7 @@ func (rbc *RBC) distributeMessage(proposer cleisthenes.Member, reqs []cleisthene
 				Rbc: &pb.RBC{
 					Payload:       payload,
 					Proposer:      proposer.Address.String(),
-					ContentLength: rbc.contentLength,
+					ContentLength: rbc.contentLength.value(),
 					Type:          typ,
 				},
 			},
@@ -145,7 +181,7 @@ func (rbc *RBC) shareMessage(proposer cleisthenes.Member, req cleisthenes.Reques
 			Rbc: &pb.RBC{
 				Payload:       payload,
 				Proposer:      proposer.Address.String(),
-				ContentLength: rbc.contentLength,
+				ContentLength: rbc.contentLength.value(),
 				Type:          typ,
 			},
 		},
@@ -166,9 +202,7 @@ func (rbc *RBC) HandleInput(data []byte) error {
 		return err
 	}
 
-	if rbc.contentLength == 0 {
-		rbc.contentLength = uint64(len(data))
-	}
+	rbc.contentLength.set(uint64(len(data)))
 
 	// send to me
 	if err := rbc.handleValueRequest(rbc.proposer, reqs[0].(*ValRequest)); err != nil {
@@ -195,12 +229,9 @@ func (rbc *RBC) HandleMessage(sender cleisthenes.Member, msg *pb.Message_Rbc) er
 		err:    make(chan error),
 	}
 
-	if rbc.contentLength == 0 {
-		rbc.contentLength = msg.Rbc.ContentLength
-	}
-
-	if rbc.contentLength != msg.Rbc.ContentLength {
-		return errors.New(fmt.Sprintf("inavlid content length - know as : %d, receive : %d", rbc.contentLength, msg.Rbc.ContentLength))
+	rbc.contentLength.set(msg.Rbc.ContentLength)
+	if rbc.contentLength.value() != msg.Rbc.ContentLength {
+		return errors.New(fmt.Sprintf("inavlid content length - know as : %d, receive : %d", rbc.contentLength.value(), msg.Rbc.ContentLength))
 	}
 
 	rbc.reqChan <- r
@@ -234,12 +265,18 @@ func (rbc *RBC) handleValueRequest(sender cleisthenes.Member, req *ValRequest) e
 		return errors.New("invalid VALUE request")
 	}
 
+	if err := rbc.echoReqRepo.Save(rbc.owner.Address, &EchoRequest{*req}); err != nil {
+		return err
+	}
+
+	if err := rbc.readyReqRepo.Save(rbc.owner.Address, &ReadyRequest{req.RootHash}); err != nil {
+		return err
+	}
+
 	rbc.valReceived.Set(true)
 	rbc.echoSent.Set(true)
-	echoReq := &EchoRequest{*req}
-	rbc.shareMessage(rbc.proposer, echoReq)
+	rbc.shareMessage(rbc.proposer, &EchoRequest{*req})
 
-	iLogger.Infof(nil, "[VAL] owner : %s, proposer : %s, sender : %s", rbc.owner.Address.String(), rbc.proposer.Address.String(), sender.Address.String())
 	return nil
 }
 
@@ -267,12 +304,9 @@ func (rbc *RBC) handleEchoRequest(sender cleisthenes.Member, req *EchoRequest) e
 		if err != nil {
 			return err
 		}
-		rbc.lock.Lock()
-		rbc.value = value
-		rbc.lock.Unlock()
+		rbc.output.set(value)
 	}
 
-	iLogger.Infof(nil, "[ECHO] owner : %s, proposer : %s, sender : %s", rbc.owner.Address.String(), rbc.proposer.Address.String(), sender.Address.String())
 	return nil
 }
 
@@ -287,8 +321,7 @@ func (rbc *RBC) handleReadyRequest(sender cleisthenes.Member, req *ReadyRequest)
 
 	if rbc.countReadys(req.RootHash) >= rbc.readyThreshold() && !rbc.readySent.Value() {
 		rbc.readySent.Set(true)
-		readyReq := &ReadyRequest{req.RootHash}
-		rbc.shareMessage(rbc.proposer, readyReq)
+		rbc.shareMessage(rbc.proposer, &ReadyRequest{req.RootHash})
 	}
 
 	if rbc.countReadys(req.RootHash) >= rbc.outputThreshold() && rbc.countEchos(req.RootHash) >= rbc.echoThreshold() {
@@ -296,26 +329,15 @@ func (rbc *RBC) handleReadyRequest(sender cleisthenes.Member, req *ReadyRequest)
 		if err != nil {
 			return err
 		}
-		rbc.lock.Lock()
-		rbc.value = value
-		rbc.lock.Unlock()
+		rbc.output.set(value)
 	}
 
-	iLogger.Infof(nil, "[READY] owner : %s, proposer : %s, sender : %s", rbc.owner.Address.String(), rbc.proposer.Address.String(), sender.Address.String())
 	return nil
 }
 
 // Return output
-func (rbc *RBC) Value() []byte {
-	rbc.lock.Lock()
-	defer rbc.lock.Unlock()
-
-	if rbc.value != nil {
-		value := rbc.value
-		rbc.value = nil
-		return value
-	}
-	return nil
+func (rbc *RBC) Output() []byte {
+	return rbc.output.value()
 }
 
 func (rbc *RBC) run() {
@@ -390,7 +412,7 @@ func (rbc *RBC) interpolate(rootHash []byte) ([]byte, error) {
 		value = append(value, data...)
 	}
 
-	return value[:rbc.contentLength], nil
+	return value[:rbc.contentLength.value()], nil
 }
 
 // wait until receive N - f ECHO messages

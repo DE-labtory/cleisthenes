@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"reflect"
+	"sync"
 	"testing"
 
 	"github.com/DE-labtory/cleisthenes/rbc/merkletree"
@@ -32,7 +33,7 @@ func setUpMockNode(t *testing.T, n int, f int, owner cleisthenes.Member, memberM
 
 	rbcList := make([]*RBC, 0)
 	for _, member := range memberMap.Members() {
-		rbc := New(n, f, owner, member, nil)
+		rbc, _ := New(n, f, owner, member, nil)
 		rbc.broadcaster = bc
 		rbcList = append(rbcList, rbc)
 	}
@@ -127,7 +128,7 @@ func Test_RBC_handleValueRequest(t *testing.T) {
 		memberMap.Add(owner)
 		bc := setUpMockBC(t, memberMap)
 
-		rbc := New(n, f, *owner, cleisthenes.Member{}, nil)
+		rbc, _ := New(n, f, *owner, cleisthenes.Member{}, nil)
 		rbc.broadcaster = bc
 		rbcList = append(rbcList, rbc)
 		bcList = append(bcList, bc)
@@ -233,7 +234,7 @@ func Test_RBC_interpolate_primitive(t *testing.T) {
 		f:               f,
 		numDataShards:   n - 2*f,
 		numParityShards: 2 * f,
-		contentLength:   uint64(len(data)),
+		contentLength:   &contentLength{sync.RWMutex{}, uint64(len(data))},
 		enc:             enc,
 		echoReqRepo:     echoReqRepo,
 	}
@@ -285,7 +286,7 @@ func Test_RBC_interpolate_struct(t *testing.T) {
 		f:               f,
 		numDataShards:   n - 2*f,
 		numParityShards: 2 * f,
-		contentLength:   uint64(len(payload)),
+		contentLength:   &contentLength{sync.RWMutex{}, uint64(len(payload))},
 		enc:             enc,
 		echoReqRepo:     echoReqRepo,
 	}
