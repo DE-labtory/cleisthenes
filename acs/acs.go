@@ -17,8 +17,7 @@ type request struct {
 
 type ACS struct {
 	owner cleisthenes.Member
-	// TODO : add Tracer
-
+	cleisthenes.Tracer
 	// rbcMap has rbc instances
 	// TODO: abstract map into repository
 	rbcMap map[cleisthenes.Address]*rbc.RBC
@@ -28,20 +27,13 @@ type ACS struct {
 	bbaMap map[cleisthenes.Address]*bba.BBA
 
 	// broadcastResult collects RBC instances' result
-	// TODO: abstract map into struct && add lock
-	broadcastResult map[cleisthenes.Address][]byte
-
+	broadcastResult broadcastDataMap
 	// agreementResult collects BBA instances' result
 	// each entry have three states: undefined, zero, one
-	// TODO: change datastructure into map[cleisthenes.Address]cleisthenes.BinaryState
-	// TODO: abstract map into struct && add lock
-	agreementResult map[cleisthenes.Address]bool
-
+	agreementResult binaryStateMap
 	// agreementStarted saves whether BBA instances started
 	// binary byzantine agreement
-	// TODO: change datastructure into map[cleisthenes.Address]cleisthenes.Binary
-	// TODO: abstract map into struct && add lock
-	agreementStarted map[cleisthenes.Address]bool
+	agreementStarted binaryStateMap
 
 	reqChan       chan request
 	agreementChan chan struct{}
@@ -49,18 +41,21 @@ type ACS struct {
 
 	stopFlag int32
 
+	binOutputChan cleisthenes.BinaryReceiver
+
 	// done sends signal when ACS done its task
 	done chan struct{}
 }
 
-func New(owner cleisthenes.Member) *ACS {
+func New(owner cleisthenes.Member, binOutputChan cleisthenes.BinaryReceiver, binInputChan cleisthenes.BinarySender) *ACS {
 	return &ACS{
 		owner:  owner,
 		rbcMap: make(map[cleisthenes.Address]*rbc.RBC),
 		bbaMap: make(map[cleisthenes.Address]*bba.BBA),
 		// TODO : consider size of reqChan, otherwise this might cause requests to be lost
-		reqChan:   make(chan request),
-		closeChan: make(chan struct{}, 1),
+		reqChan:       make(chan request),
+		closeChan:     make(chan struct{}, 1),
+		binOutputChan: binOutputChan,
 	}
 }
 
@@ -107,8 +102,6 @@ func (acs *ACS) muxMessage(sender cleisthenes.Member, msg *pb.Message) error {
 
 func (acs *ACS) handleRbcMessage(sender cleisthenes.Member, msg *pb.Message_Rbc) error {
 	// TODO: provide input to RBC
-	// TODO: if BA not provided value, then provide 1
-	// TODO: if N-f BA received 1, then signal to agreementChan
 	return nil
 }
 
@@ -116,10 +109,6 @@ func (acs *ACS) handleBbaMessage(sender cleisthenes.Member, msg *pb.Message_Bba)
 	// TODO: provide input to BBA instance
 	return nil
 }
-
-// inputZeroToIdleBba send zero to bba instances which still do
-// not receive input value
-func (acs *ACS) sendZeroToIdleBba() {}
 
 func (acs *ACS) run() {
 	for !acs.toDie() {
@@ -130,9 +119,17 @@ func (acs *ACS) run() {
 			req.err <- acs.muxMessage(req.sender, req.data)
 		case <-acs.agreementChan:
 			acs.sendZeroToIdleBba()
+		case output := <-acs.binOutputChan.Receive():
+			acs.tryCompleteAgreement(output.Member, output.Binary)
 		}
 	}
 }
+
+// sendZeroToIdleBba send zero to bba instances which still do
+// not receive input value
+func (acs *ACS) sendZeroToIdleBba() {}
+
+func (acs *ACS) tryCompleteAgreement(sender cleisthenes.Member, bin cleisthenes.Binary) {}
 
 func (acs *ACS) toDie() bool {
 	return atomic.LoadInt32(&(acs.stopFlag)) == int32(1)

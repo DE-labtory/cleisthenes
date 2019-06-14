@@ -3,6 +3,7 @@ package bba
 import (
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strconv"
 	"testing"
 	"time"
@@ -445,6 +446,7 @@ func tryoutAgreementTestSetup() (*BBA, *bbaTester, func()) {
 		advanceRoundChan:    make(chan struct{}, 10),
 		Tracer:              cleisthenes.NewMemCacheTracer(),
 		coinGenerator:       mock.NewCoinGenerator(cleisthenes.Coin(cleisthenes.One)),
+		binInputChan:        cleisthenes.NewBinaryChannel(10),
 	}
 	return bbaInstance, newBBATester(), func() {
 		close(bbaInstance.advanceRoundChan)
@@ -471,6 +473,15 @@ func TestBBA_TryoutAgreement_WhenBinValueSizeIsOne_AndSameWithCoinValue(t *testi
 	}
 	if !bbaInstance.done.Value() {
 		t.Fatalf("bba is not done")
+	}
+
+	binChan, _ := bbaInstance.binInputChan.(*cleisthenes.BinaryChannel)
+	msg := <-binChan.Receive()
+	if !reflect.DeepEqual(msg.Member, bbaInstance.owner) {
+		t.Fatalf("expected binary message member is %v, but got %v", bbaInstance.owner, msg.Member)
+	}
+	if msg.Binary != cleisthenes.One {
+		t.Fatalf("expected message binary is %v, but got %v", cleisthenes.One, msg.Binary)
 	}
 
 	if err := tester.waitWithTimer(done); err != nil {
