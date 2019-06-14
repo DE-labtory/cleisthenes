@@ -53,12 +53,19 @@ type BBA struct {
 	tryoutAgreementChan chan struct{}
 	advanceRoundChan    chan struct{}
 
-	broadcaster cleisthenes.Broadcaster
-
+	broadcaster   cleisthenes.Broadcaster
 	coinGenerator cleisthenes.CoinGenerator
+	binInputChan  cleisthenes.BinarySender
 }
 
-func New(n int, f int, owner cleisthenes.Member, broadcaster cleisthenes.Broadcaster, coinGenerator cleisthenes.CoinGenerator) *BBA {
+func New(
+	n int,
+	f int,
+	owner cleisthenes.Member,
+	broadcaster cleisthenes.Broadcaster,
+	coinGenerator cleisthenes.CoinGenerator,
+	binInputChan cleisthenes.BinarySender,
+) *BBA {
 	instance := &BBA{
 		owner: owner,
 		n:     n,
@@ -86,6 +93,7 @@ func New(n int, f int, owner cleisthenes.Member, broadcaster cleisthenes.Broadca
 
 		broadcaster:   broadcaster,
 		coinGenerator: coinGenerator,
+		binInputChan:  binInputChan,
 
 		Tracer: cleisthenes.NewMemCacheTracer(),
 	}
@@ -211,19 +219,29 @@ func (bba *BBA) tryoutAgreement() {
 	}
 	if len(binList) > 1 {
 		bba.Log("bin value set size is larger than one")
-		bba.est.Set(cleisthenes.Binary(coin))
-		bba.advanceRoundChan <- struct{}{}
+		bba.agreementFailed(cleisthenes.Binary(coin))
 		return
 	}
-
 	if binList[0] != cleisthenes.Binary(coin) {
 		bba.Log("bin value set value is different with coin value")
-		bba.est.Set(binList[0])
-		bba.advanceRoundChan <- struct{}{}
+		bba.agreementFailed(binList[0])
 		return
 	}
-	bba.dec.Set(binList[0])
+	bba.agreementSuccess(binList[0])
+}
+
+func (bba *BBA) agreementFailed(estValue cleisthenes.Binary) {
+	bba.est.Set(estValue)
+	bba.advanceRoundChan <- struct{}{}
+}
+
+func (bba *BBA) agreementSuccess(decValue cleisthenes.Binary) {
+	bba.dec.Set(decValue)
 	bba.done.Set(true)
+	bba.binInputChan.Send(cleisthenes.BinaryMessage{
+		Member: bba.owner,
+		Binary: bba.dec.Value(),
+	})
 	bba.advanceRoundChan <- struct{}{}
 }
 
