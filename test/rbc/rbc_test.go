@@ -8,6 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/DE-labtory/cleisthenes/log"
+
+	"github.com/DE-labtory/iLogger"
+
 	"github.com/DE-labtory/cleisthenes/test/util"
 
 	"github.com/DE-labtory/cleisthenes"
@@ -72,6 +76,8 @@ func RBCTest(proposer *Node, nodeList []*Node, data []byte) error {
 			if value := node.Value(proposer.address); value != nil {
 				if !bytes.Equal(value, data) {
 					return errors.New(fmt.Sprintf("node : %s fail to reach an agreement - expected : %s, got : %s\n", node.address.String(), data, value))
+				} else {
+					log.Info("action", "start", "owner", node.address.String())
 				}
 				doneCnt++
 				break
@@ -90,6 +96,7 @@ func Test_RBC_4NODEs(t *testing.T) {
 	n := 4
 	f := 1
 
+	iLogger.SetToDebug()
 	nodeType := []NodeType{Normal, Normal, Normal, Normal}
 	nodeList := setNodeList(n, f, nodeType)
 	wg := sync.WaitGroup{}

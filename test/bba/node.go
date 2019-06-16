@@ -3,8 +3,8 @@ package bba
 import (
 	"github.com/DE-labtory/cleisthenes"
 	engine "github.com/DE-labtory/cleisthenes/bba"
+	"github.com/DE-labtory/cleisthenes/log"
 	"github.com/DE-labtory/cleisthenes/pb"
-	"github.com/DE-labtory/iLogger"
 )
 
 type handler struct {
@@ -49,17 +49,17 @@ func (n *Node) Run() {
 	handler := newHandler(func(msg cleisthenes.Message) {
 		bbaMessage, ok := msg.Message.Payload.(*pb.Message_Bba)
 		if !ok {
-			iLogger.Fatalf(nil, "[handler] received message is not Message_Bba type")
+			log.Error("action", "handler", "msg", "received message is not Message_Bba type")
 		}
 		addr, err := cleisthenes.ToAddress(msg.Sender)
 		if err != nil {
-			iLogger.Fatalf(nil, "[handler] failed to parse sender address: addr=%s", addr)
+			log.Error("action", "handler", "sender", addr, "msg", "failed to parse sender address")
 		}
 		n.bba.HandleMessage(n.memberMap.Member(addr), bbaMessage)
 	})
 
 	n.server.OnConn(func(conn cleisthenes.Connection) {
-		iLogger.Infof(nil, "server: on connection, from: %s", n.Info())
+		log.Info("action", "server", "from", n.Info(), "msg", "on connection")
 		conn.Handle(handler)
 
 		if err := conn.Start(); err != nil {
@@ -108,8 +108,4 @@ func (n *Node) Info() cleisthenes.Address {
 
 func (n *Node) Result() (cleisthenes.Binary, bool) {
 	return n.bba.Result()
-}
-
-func (n *Node) Trace() {
-	n.bba.Trace()
 }

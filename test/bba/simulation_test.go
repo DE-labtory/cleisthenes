@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/DE-labtory/cleisthenes/test/mock"
+	"github.com/DE-labtory/cleisthenes/log"
 
-	"github.com/DE-labtory/iLogger"
+	"github.com/DE-labtory/cleisthenes/test/mock"
 
 	"github.com/DE-labtory/cleisthenes"
 	"github.com/DE-labtory/cleisthenes/test/bba"
@@ -43,7 +43,7 @@ func (r *simulationResult) append(out output) {
 
 func (r *simulationResult) print() {
 	for _, out := range r.outputList {
-		iLogger.Infof(nil, "addr: %s, value: %v", out.addr, out.value)
+		log.Info("action", "result", "addr", out.addr, "value", out.value)
 	}
 }
 
@@ -174,23 +174,11 @@ func watchResult(nodeList []*bba.Node) *simulationResult {
 					addr: node.Info(), value: result})
 			}
 		}
-
-		time.Sleep(1 * time.Second)
-		iLogger.Info(nil, "sleep ...")
-		iLogger.Info(nil, "========================trace====================")
-		for _, node := range nodeList {
-			iLogger.Info(nil, "------------------------")
-			iLogger.Info(nil, node.Info().String())
-			iLogger.Info(nil, "------------------------")
-			node.Trace()
-		}
-
 		if len(simulationResult.outputList) == len(nodeList) {
 			break
 		}
 	}
 
-	iLogger.Info(nil, "========================result====================")
 	simulationResult.print()
 
 	return simulationResult
