@@ -29,8 +29,13 @@ func (o *output) value() []byte {
 	o.RLock()
 	defer o.RUnlock()
 	output := o.output
-	o.output = nil
 	return output
+}
+
+func (o *output) delete() {
+	o.Lock()
+	defer o.Unlock()
+	o.output = nil
 }
 
 type contentLength struct {
@@ -90,9 +95,15 @@ type RBC struct {
 	reqChan   chan request
 
 	broadcaster cleisthenes.Broadcaster
+	dataSender  cleisthenes.DataSender
 }
 
-func New(n, f int, owner, proposer cleisthenes.Member, broadcaster cleisthenes.Broadcaster) (*RBC, error) {
+func New(
+	n, f int,
+	owner, proposer cleisthenes.Member,
+	broadcaster cleisthenes.Broadcaster,
+	dataSender cleisthenes.DataSender,
+) (*RBC, error) {
 	numParityShards := 2 * f
 	numDataShards := n - numParityShards
 
@@ -121,6 +132,7 @@ func New(n, f int, owner, proposer cleisthenes.Member, broadcaster cleisthenes.B
 		closeChan:       make(chan struct{}),
 		reqChan:         make(chan request),
 		broadcaster:     broadcaster,
+		dataSender:      dataSender,
 	}
 	go rbc.run()
 	return rbc, nil
@@ -300,11 +312,11 @@ func (rbc *RBC) handleEchoRequest(sender cleisthenes.Member, req *EchoRequest) e
 	}
 
 	if rbc.countReadys(req.RootHash) >= rbc.outputThreshold() && rbc.countEchos(req.RootHash) >= rbc.echoThreshold() {
-		value, err := rbc.interpolate(req.RootHash)
+		value, err := rbc.tryDecodeValue(req.RootHash)
 		if err != nil {
 			return err
 		}
-		rbc.output.set(value)
+		rbc.decodeSuccess(value)
 	}
 
 	return nil
@@ -325,19 +337,14 @@ func (rbc *RBC) handleReadyRequest(sender cleisthenes.Member, req *ReadyRequest)
 	}
 
 	if rbc.countReadys(req.RootHash) >= rbc.outputThreshold() && rbc.countEchos(req.RootHash) >= rbc.echoThreshold() {
-		value, err := rbc.interpolate(req.RootHash)
+		value, err := rbc.tryDecodeValue(req.RootHash)
 		if err != nil {
 			return err
 		}
-		rbc.output.set(value)
+		rbc.decodeSuccess(value)
 	}
 
 	return nil
-}
-
-// Return output
-func (rbc *RBC) Output() []byte {
-	return rbc.output.value()
 }
 
 func (rbc *RBC) run() {
@@ -385,7 +392,7 @@ func (rbc *RBC) countReadys(rootHash []byte) int {
 
 // interpolate the given shards
 // if try to interpolate not enough ( < N - 2f ) shards then return error
-func (rbc *RBC) interpolate(rootHash []byte) ([]byte, error) {
+func (rbc *RBC) tryDecodeValue(rootHash []byte) ([]byte, error) {
 	reqs := rbc.echoReqRepo.FindAll()
 
 	if len(reqs) < rbc.numDataShards {
@@ -413,6 +420,15 @@ func (rbc *RBC) interpolate(rootHash []byte) ([]byte, error) {
 	}
 
 	return value[:rbc.contentLength.value()], nil
+}
+
+func (rbc *RBC) decodeSuccess(decValue []byte) {
+	rbc.output.set(decValue)
+	rbc.dataSender.Send(cleisthenes.DataMessage{
+		Member: rbc.proposer,
+		Data:   rbc.output.value(),
+	})
+	rbc.output.delete()
 }
 
 // wait until receive N - f ECHO messages

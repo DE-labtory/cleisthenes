@@ -1,8 +1,6 @@
 package rbc
 
 import (
-	"bytes"
-	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -19,14 +17,17 @@ func setNodeList(n, f int, nodeType []NodeType) []*Node {
 	var port uint16 = 8000
 
 	nodeList := make([]*Node, 0)
-
+	dataChanList := make([]*cleisthenes.DataChannel, 0)
 	for i := 0; i < n; i++ {
 		availablePort := util.GetAvailablePort(port)
 		address := cleisthenes.Address{
 			Ip:   ip,
 			Port: availablePort,
 		}
-		node := NewNode(n, f, address, nodeType[i])
+		dataChan := cleisthenes.NewDataChannel(n)
+		dataChanList = append(dataChanList, dataChan)
+
+		node := NewNode(n, f, address, dataChan, nodeType[i])
 		node.Run()
 		time.Sleep(50 * time.Millisecond)
 		nodeList = append(nodeList, node)
@@ -37,7 +38,6 @@ func setNodeList(n, f int, nodeType []NodeType) []*Node {
 	for m, mNode := range nodeList {
 		member := cleisthenes.NewMember(mNode.address.Ip, mNode.address.Port)
 		mNode.memberMap.Add(member)
-
 		for y, yNode := range nodeList {
 			if m != y {
 				mNode.Connect(yNode.address)
@@ -46,8 +46,9 @@ func setNodeList(n, f int, nodeType []NodeType) []*Node {
 
 		owner := mNode.memberMap.Member(mNode.address)
 		for _, member := range mNode.memberMap.Members() {
-			r, _ := rbc.New(n, f, owner, member, mNode.connPool)
+			r, _ := rbc.New(n, f, owner, member, mNode.connPool, dataChanList[m])
 			mNode.rbcMap[member.Address] = r
+			mNode.dataOutputMap.set(member.Address, nil)
 		}
 	}
 
@@ -65,25 +66,33 @@ func RBCTest(proposer *Node, nodeList []*Node, data []byte) error {
 
 	proposer.Propose(data)
 
-	// polling value
+	// check whether node's rbc done
+	flagChan := make(chan struct{}, nodeCnt)
+	for _, node := range nodeList {
+		go checkResult(node, flagChan)
+	}
+
 	doneCnt := 0
 	for {
-		for _, node := range nodeList {
-			if value := node.Value(proposer.address); value != nil {
-				if !bytes.Equal(value, data) {
-					return errors.New(fmt.Sprintf("node : %s fail to reach an agreement - expected : %s, got : %s\n", node.address.String(), data, value))
-				}
-				doneCnt++
-				break
+		select {
+		case <-flagChan:
+			doneCnt++
+			if doneCnt == nodeCnt-byzantineCnt {
+				return nil
 			}
-		}
-
-		if doneCnt == nodeCnt-byzantineCnt {
-			break
 		}
 	}
 
 	return nil
+}
+
+func checkResult(node *Node, flagChan chan struct{}) {
+	for {
+		select {
+		case <-node.doneChan:
+			flagChan <- struct{}{}
+		}
+	}
 }
 
 func Test_RBC_4NODEs(t *testing.T) {
@@ -129,6 +138,9 @@ func Test_RBC_4NODEs_BYZANTINE_STUPID(t *testing.T) {
 	}
 
 	wg.Wait()
+
+	// wait for late messages
+	time.Sleep(1 * time.Second)
 	for _, node := range nodeList {
 		node.Close()
 	}
@@ -153,12 +165,16 @@ func Test_RBC_4NODEs_BYZANTINE_INTERCEPTOR(t *testing.T) {
 	}
 
 	wg.Wait()
+
+	// wait for late messages
+	time.Sleep(1 * time.Second)
 	for _, node := range nodeList {
 		node.Close()
 	}
 }
 
 func Test_RBC_4NODEs_BYZANTINE_FAULT(t *testing.T) {
+	// arbitrary value for network timeout to identify byzantine scenario
 	const TIMEOUT = 3 * time.Second
 	n := 4
 	f := 1
@@ -182,6 +198,8 @@ func Test_RBC_4NODEs_BYZANTINE_FAULT(t *testing.T) {
 		t.Fatalf("test fail! it can't tolerate")
 	}
 
+	// wait for late messages
+	time.Sleep(1 * time.Second)
 	for _, node := range nodeList {
 		node.Close()
 	}
@@ -211,6 +229,9 @@ func Test_RBC_16NODEs(t *testing.T) {
 	}
 
 	wg.Wait()
+
+	// wait for late messages
+	time.Sleep(1 * time.Second)
 	for _, node := range nodeList {
 		node.Close()
 	}
@@ -241,12 +262,16 @@ func Test_RBC_16NODEs_BYZANTINE_MIX(t *testing.T) {
 	}
 
 	wg.Wait()
+
+	// wait for late messages
+	time.Sleep(1 * time.Second)
 	for _, node := range nodeList {
 		node.Close()
 	}
 }
 
 func Test_RBC_16NODEs_BYZANTINE_FAULT(t *testing.T) {
+	// arbitrary value for network timeout to identify byzantine scenario
 	const TIMEOUT = 3 * time.Second
 	n := 16
 	f := 5
@@ -276,6 +301,8 @@ func Test_RBC_16NODEs_BYZANTINE_FAULT(t *testing.T) {
 		t.Fatalf("test fail! it can't tolerate")
 	}
 
+	// wait for late messages
+	time.Sleep(1 * time.Second)
 	for _, node := range nodeList {
 		node.Close()
 	}
