@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/DE-labtory/cleisthenes/log"
+
 	"github.com/DE-labtory/cleisthenes"
 	"github.com/DE-labtory/cleisthenes/pb"
 	"github.com/DE-labtory/cleisthenes/rbc/merkletree"
@@ -204,6 +206,9 @@ func (rbc *RBC) HandleInput(data []byte) error {
 
 	rbc.contentLength.set(uint64(len(data)))
 
+	log.Debug("comp", "rbc", "action", "HandleInput", "owner", rbc.owner.Address.String(), "proposer", rbc.proposer.Address.String(),
+		"requests", len(reqs), "content length", len(data))
+
 	// send to me
 	if err := rbc.handleValueRequest(rbc.proposer, reqs[0].(*ValRequest)); err != nil {
 		return err
@@ -277,6 +282,8 @@ func (rbc *RBC) handleValueRequest(sender cleisthenes.Member, req *ValRequest) e
 	rbc.echoSent.Set(true)
 	rbc.shareMessage(rbc.proposer, &EchoRequest{*req})
 
+	log.Debug("comp", "rbc", "action", "handleValueRequest", "owner", rbc.owner.Address.String(), "proposer", rbc.proposer.Address.String(),
+		"sender", sender.Address.String())
 	return nil
 }
 
@@ -307,6 +314,8 @@ func (rbc *RBC) handleEchoRequest(sender cleisthenes.Member, req *EchoRequest) e
 		rbc.output.set(value)
 	}
 
+	log.Debug("comp", "rbc", "action", "handleEchoRequest", "owner", rbc.owner.Address.String(), "proposer", rbc.proposer.Address.String(),
+		"sender", sender.Address.String())
 	return nil
 }
 
@@ -331,7 +340,8 @@ func (rbc *RBC) handleReadyRequest(sender cleisthenes.Member, req *ReadyRequest)
 		}
 		rbc.output.set(value)
 	}
-
+	log.Debug("comp", "rbc", "action", "handleReadyRequest", "owner", rbc.owner.Address.String(), "proposer", rbc.proposer.Address.String(),
+		"sender", sender.Address.String())
 	return nil
 }
 
@@ -412,6 +422,8 @@ func (rbc *RBC) interpolate(rootHash []byte) ([]byte, error) {
 		value = append(value, data...)
 	}
 
+	log.Debug("comp", "rbc", "action", "interpolate", "owner", rbc.owner.Address.String(), "proposer", rbc.proposer.Address.String(),
+		"shards count", len(shards))
 	return value[:rbc.contentLength.value()], nil
 }
 

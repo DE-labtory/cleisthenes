@@ -3,9 +3,10 @@ package bba
 import (
 	"encoding/json"
 	"errors"
-	"strconv"
 	"sync"
 	"sync/atomic"
+
+	"github.com/DE-labtory/cleisthenes/log"
 
 	"github.com/golang/protobuf/ptypes"
 
@@ -23,7 +24,6 @@ type request struct {
 
 type BBA struct {
 	*sync.RWMutex
-	cleisthenes.Tracer
 
 	owner cleisthenes.Member
 	// number of network nodes
@@ -86,8 +86,6 @@ func New(n int, f int, owner cleisthenes.Member, broadcaster cleisthenes.Broadca
 
 		broadcaster:   broadcaster,
 		coinGenerator: coinGenerator,
-
-		Tracer: cleisthenes.NewMemCacheTracer(),
 	}
 	go instance.run()
 	return instance
@@ -140,10 +138,6 @@ func (bba *BBA) Close() {
 	close(bba.reqChan)
 }
 
-func (bba *BBA) Trace() {
-	bba.Tracer.Trace()
-}
-
 func (bba *BBA) muxMessage(sender cleisthenes.Member, round uint64, req cleisthenes.Request) error {
 	if round < bba.round {
 		return nil
@@ -169,16 +163,19 @@ func (bba *BBA) handleBvalRequest(sender cleisthenes.Member, bval *BvalRequest) 
 	}
 
 	count := bba.countBvalByValue(bval.Value)
-	bba.Log("action", "handleBval", "count", strconv.Itoa(count))
+	log.Debug("comp", "bba", "action", "handleBvalRequest", "owner", bba.owner.Address.String(), "round", bba.round,
+		"sender", sender.Address.String(), "count", count)
 	if count == bba.binValueSetThreshold() {
-		bba.Log("action", "binValueSet", "count", strconv.Itoa(count))
+		log.Debug("comp", "bba", "action", "binValueSet", "owner", bba.owner.Address.String(), "round", bba.round,
+			"sender", sender.Address.String(), "count", count)
 		bba.binValueSet.union(bval.Value)
 		bba.binValueChan <- struct{}{}
 		return nil
 	}
 	if count == bba.bvalBroadcastThreshold() && !bba.broadcastedBvalSet.exist(bval.Value) {
 		bba.broadcastedBvalSet.union(bval.Value)
-		bba.Log("action", "broadcastBval", "count", strconv.Itoa(count))
+		log.Debug("comp", "bba", "action", "broadcastBval", "owner", bba.owner.Address.String(), "round", bba.round,
+			"sender", sender.Address.String(), "count", count)
 		return bba.broadcast(bval)
 	}
 	return nil
@@ -189,7 +186,8 @@ func (bba *BBA) handleAuxRequest(sender cleisthenes.Member, aux *AuxRequest) err
 		return err
 	}
 	count := bba.countAuxByValue(aux.Value)
-	bba.Log("action", "handleAux", "from", sender.Address.String(), "count", strconv.Itoa(count))
+	log.Debug("comp", "bba", "action", "handleAuxRequest", "owner", bba.owner.Address.String(), "round", bba.round,
+		"sender", sender.Address.String(), "count", count)
 	if count < bba.tryoutAgreementThreshold() {
 		return nil
 	}
@@ -198,7 +196,7 @@ func (bba *BBA) handleAuxRequest(sender cleisthenes.Member, aux *AuxRequest) err
 }
 
 func (bba *BBA) tryoutAgreement() {
-	bba.Log("action", "tryoutAgreement", "from", bba.owner.Address.String())
+	log.Debug("comp", "bba", "action", "tryoutAgreement", "owner", bba.owner.Address.String(), "round", bba.round)
 	if bba.done.Value() {
 		return
 	}
@@ -206,18 +204,21 @@ func (bba *BBA) tryoutAgreement() {
 
 	binList := bba.binValueSet.toList()
 	if len(binList) == 0 {
-		bba.Log("binary set is empty, but tried agreement")
+		log.Debug("comp", "bba", "action", "tryoutAgreement", "owner", bba.owner.Address.String(), "round", bba.round,
+			"msg", "binary set is empty, but tried agreement")
 		return
 	}
 	if len(binList) > 1 {
-		bba.Log("bin value set size is larger than one")
+		log.Debug("comp", "bba", "action", "tryoutAgreement", "owner", bba.owner.Address.String(), "round", bba.round,
+			"msg", "bin value set size is larger than one")
 		bba.est.Set(cleisthenes.Binary(coin))
 		bba.advanceRoundChan <- struct{}{}
 		return
 	}
 
 	if binList[0] != cleisthenes.Binary(coin) {
-		bba.Log("bin value set value is different with coin value")
+		log.Debug("comp", "bba", "action", "tryoutAgreement", "owner", bba.owner.Address.String(), "round", bba.round,
+			"msg", "bin value set value is different with coin value")
 		bba.est.Set(binList[0])
 		bba.advanceRoundChan <- struct{}{}
 		return
@@ -228,7 +229,8 @@ func (bba *BBA) tryoutAgreement() {
 }
 
 func (bba *BBA) advanceRound() {
-	bba.Log("action", "advanceRound", "from", bba.owner.Address.String())
+	log.Debug("comp", "bba", "action", "advanceRound", "owner", bba.owner.Address.String(), "round", bba.round,
+		"msg", "bin value set value is different with coin value")
 	bba.bvalRepo = newBvalReqRepository()
 	bba.auxRepo = newAuxReqRepository()
 
@@ -242,7 +244,8 @@ func (bba *BBA) advanceRound() {
 	if err := bba.HandleInput(&BvalRequest{
 		Value: bba.est.Value(),
 	}); err != nil {
-		bba.Log("failed to handle input")
+		log.Error("comp", "bba", "action", "advanceRound", "owner", bba.owner.Address.String(), "round", bba.round,
+			"msg", "failed to handle input", "error", err.Error())
 	}
 }
 
@@ -258,23 +261,25 @@ func (bba *BBA) handleDelayedRequest(round uint64) {
 			}
 			bba.reqChan <- r
 			if err := <-r.err; err != nil {
-				bba.Log("action", "handleDelayedRequest", "err", err.Error())
+				log.Error("comp", "bba", "action", "handleDelayedRequest", "owner", bba.owner.Address.String(), "round", bba.round,
+					"error", err.Error())
 			}
 		}
 	}
-	bba.Log("action", "handleDelayedRequest")
+	log.Error("comp", "bba", "action", "handleDelayedRequest", "owner", bba.owner.Address.String(), "round", bba.round)
 }
 
 func (bba *BBA) broadcastAuxOnceForRound() {
 	if bba.auxBroadcasted.Value() == true {
 		return
 	}
-	bba.Log("action", "broadcastAux", "from", bba.owner.Address.String())
+	log.Debug("comp", "bba", "action", "broadcastAux", "owner", bba.owner.Address.String(), "round", bba.round)
 	for _, bin := range bba.binValueSet.toList() {
 		if err := bba.broadcast(&AuxRequest{
 			Value: bin,
 		}); err != nil {
-			bba.Log("action", "broadcastAux", "err", err.Error())
+			log.Error("comp", "bba", "action", "broadcastAux", "owner", bba.owner.Address.String(), "round", bba.round,
+				"error", err.Error())
 		}
 	}
 	bba.auxBroadcasted.Set(true)

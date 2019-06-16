@@ -101,7 +101,6 @@ func setupHandleBvalRequestTest(t *testing.T, bvalList []*BvalRequest) (*BBA, *m
 		broadcastedBvalSet: newBinarySet(),
 
 		binValueChan:  make(chan struct{}, 10),
-		Tracer:        cleisthenes.NewMemCacheTracer(),
 		coinGenerator: mock.NewCoinGenerator(cleisthenes.Coin(cleisthenes.One)),
 	}
 	return bbaInstance, broadcaster, tester, func() {
@@ -298,7 +297,6 @@ func setupHandleAuxRequestTest(t *testing.T, auxList []*AuxRequest) (*BBA, *mock
 		auxRepo:             newAuxReqRepository(),
 		broadcaster:         broadcaster,
 		tryoutAgreementChan: make(chan struct{}, 10),
-		Tracer:              cleisthenes.NewMemCacheTracer(),
 		coinGenerator:       mock.NewCoinGenerator(cleisthenes.Coin(cleisthenes.One)),
 	}
 
@@ -443,7 +441,6 @@ func tryoutAgreementTestSetup() (*BBA, *bbaTester, func()) {
 		dec:                 cleisthenes.NewBinaryState(),
 		tryoutAgreementChan: make(chan struct{}, 10),
 		advanceRoundChan:    make(chan struct{}, 10),
-		Tracer:              cleisthenes.NewMemCacheTracer(),
 		coinGenerator:       mock.NewCoinGenerator(cleisthenes.Coin(cleisthenes.One)),
 	}
 	return bbaInstance, newBBATester(), func() {
