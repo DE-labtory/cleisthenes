@@ -23,6 +23,36 @@ func (h *handler) ServeRequest(msg cleisthenes.Message) {
 	h.ServeRequestFunc(msg)
 }
 
+type mockRbcOutputMap struct {
+	lock  sync.RWMutex
+	items map[cleisthenes.Address][]byte
+}
+
+func newMockRbcOutputMap(size int) *mockRbcOutputMap {
+	return &mockRbcOutputMap{
+		lock:  sync.RWMutex{},
+		items: make(map[cleisthenes.Address][]byte, size),
+	}
+}
+
+func (m *mockRbcOutputMap) set(addr cleisthenes.Address, data []byte) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	m.items[addr] = data
+}
+
+func (m *mockRbcOutputMap) item(addr cleisthenes.Address) []byte {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	return m.items[addr]
+}
+
+func (m *mockRbcOutputMap) delete(addr cleisthenes.Address) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+	m.items[addr] = nil
+}
+
 type NodeType int
 
 const (
@@ -45,24 +75,31 @@ type Node struct {
 	connPool *cleisthenes.ConnectionPool
 
 	// memberMap include proposer node
-	memberMap *cleisthenes.MemberMap
+	memberMap     *cleisthenes.MemberMap
+	dataReceiver  cleisthenes.DataReceiver
+	dataOutputMap *mockRbcOutputMap
+
+	doneChan chan struct{}
 }
 
-func NewNode(n, f int, addr cleisthenes.Address, typ NodeType) *Node {
+func NewNode(n, f int, addr cleisthenes.Address, dataReceiver cleisthenes.DataReceiver, typ NodeType) *Node {
 	server := cleisthenes.NewServer(addr)
 	connPool := cleisthenes.NewConnectionPool()
 	memberMap := cleisthenes.NewMemberMap()
 
 	return &Node{
-		n:         n,
-		f:         f,
-		typ:       typ,
-		lock:      sync.RWMutex{},
-		rbcMap:    make(map[cleisthenes.Address]*rbc.RBC, 0),
-		address:   addr,
-		server:    server,
-		connPool:  connPool,
-		memberMap: memberMap,
+		n:             n,
+		f:             f,
+		typ:           typ,
+		lock:          sync.RWMutex{},
+		rbcMap:        make(map[cleisthenes.Address]*rbc.RBC, 0),
+		address:       addr,
+		server:        server,
+		connPool:      connPool,
+		memberMap:     memberMap,
+		dataReceiver:  dataReceiver,
+		dataOutputMap: newMockRbcOutputMap(n),
+		doneChan:      make(chan struct{}, n),
 	}
 }
 
@@ -82,6 +119,17 @@ func (n *Node) Run() {
 	})
 
 	go n.server.Listen()
+	go n.run()
+}
+
+func (n *Node) run() {
+	for {
+		select {
+		case msg := <-n.dataReceiver.Receive():
+			n.dataOutputMap.set(msg.Member.Address, msg.Data)
+			n.doneChan <- struct{}{}
+		}
+	}
 }
 
 func (n *Node) Connect(addr cleisthenes.Address) error {
@@ -122,10 +170,6 @@ func (n *Node) Propose(data []byte) error {
 	}
 
 	return nil
-}
-
-func (n *Node) Value(addr cleisthenes.Address) []byte {
-	return n.rbcMap[addr].Output()
 }
 
 func (n *Node) Address() cleisthenes.Address {

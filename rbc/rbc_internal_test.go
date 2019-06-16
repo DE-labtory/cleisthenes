@@ -30,11 +30,10 @@ func setUpMockNode(t *testing.T, n int, f int, owner cleisthenes.Member, memberM
 	}
 
 	bc := setUpMockBC(t, connMemberMap)
-
+	dataChannel := cleisthenes.NewDataChannel(n)
 	rbcList := make([]*RBC, 0)
 	for _, member := range memberMap.Members() {
-		rbc, _ := New(n, f, owner, member, nil)
-		rbc.broadcaster = bc
+		rbc, _ := New(n, f, owner, member, bc, dataChannel)
 		rbcList = append(rbcList, rbc)
 	}
 
@@ -127,9 +126,9 @@ func Test_RBC_handleValueRequest(t *testing.T) {
 		owner := cleisthenes.NewMember(ownAddr.Ip, ownAddr.Port)
 		memberMap.Add(owner)
 		bc := setUpMockBC(t, memberMap)
+		dataChannel := cleisthenes.NewDataChannel(n)
 
-		rbc, _ := New(n, f, *owner, cleisthenes.Member{}, nil)
-		rbc.broadcaster = bc
+		rbc, _ := New(n, f, *owner, cleisthenes.Member{}, bc, dataChannel)
 		rbcList = append(rbcList, rbc)
 		bcList = append(bcList, bc)
 	}
@@ -229,25 +228,29 @@ func Test_RBC_interpolate_primitive(t *testing.T) {
 		t.Fatalf("error in reedsolomon : %s", err.Error())
 	}
 
+	dataChannel := cleisthenes.NewDataChannel(n)
+
 	rbc := &RBC{
 		n:               n,
 		f:               f,
 		numDataShards:   n - 2*f,
 		numParityShards: 2 * f,
+		output:          &output{sync.RWMutex{}, nil},
 		contentLength:   &contentLength{sync.RWMutex{}, uint64(len(data))},
 		enc:             enc,
 		echoReqRepo:     echoReqRepo,
+		dataSender:      dataChannel,
 	}
 
 	rootHash := valReqs[0].RootHash
 
-	value, err := rbc.interpolate(rootHash)
+	value, err := rbc.tryDecodeValue(rootHash)
 	if err != nil {
 		t.Fatalf("error in interpolate data : %s", err.Error())
 	}
 
 	if !bytes.Equal(data, value) {
-		t.Fatalf("not equal original data and interpolated data - expected : %s, got : %s", data, value)
+		t.Fatalf("not equal original data and interpolated data - expected : %s, got : %s", data, rbc.output.value())
 	}
 }
 
@@ -281,25 +284,29 @@ func Test_RBC_interpolate_struct(t *testing.T) {
 		t.Fatalf("error in reedsolomon : %s", err.Error())
 	}
 
+	dataChannel := cleisthenes.NewDataChannel(n)
+
 	rbc := &RBC{
 		n:               n,
 		f:               f,
 		numDataShards:   n - 2*f,
 		numParityShards: 2 * f,
+		output:          &output{sync.RWMutex{}, nil},
 		contentLength:   &contentLength{sync.RWMutex{}, uint64(len(payload))},
 		enc:             enc,
 		echoReqRepo:     echoReqRepo,
+		dataSender:      dataChannel,
 	}
 
 	rootHash := valReqs[0].RootHash
 
-	value, err := rbc.interpolate(rootHash)
+	value, err := rbc.tryDecodeValue(rootHash)
 	if err != nil {
 		t.Fatalf("error in interpolate data : %s", err.Error())
 	}
 
 	if !bytes.Equal(payload, value) {
-		t.Fatalf("not equal original data and interpolated data (bytes) - expected : %x, got : %x", data, value)
+		t.Fatalf("not equal original data and interpolated data (bytes) - expected : %x, got : %x", data, rbc.output.value())
 	}
 
 	interpolatedData := &Data{}
