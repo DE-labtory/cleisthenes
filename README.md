@@ -1,4 +1,4 @@
-# Cleisthenes [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](https://opensource.org/licenses/Apache-2.0) [![Language](https://img.shields.io/badge/language-go-blue.svg)](https://golang.org) [![Coverage Status](https://coveralls.io/repos/github/DE-labtory/cleisthenes/badge.svg?branch=develop)](https://coveralls.io/github/DE-labtory/cleisthenes?branch=develop)
+# Cleisthenes [![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)](https://opensource.org/licenses/Apache-2.0) [![Language](https://img.shields.io/badge/language-go-blue.svg)](https://golang.org) [![Coverage Status](https://coveralls.io/repos/github/DE-labtory/cleisthenes/badge.svg?branch=develop)](https://coveralls.io/github/DE-labtory/cleisthenes?branch=develop) [![Build Status](https://travis-ci.com/DE-labtory/cleisthenes.svg?branch=develop)](https://travis-ci.com/DE-labtory/cleisthenes)
 
 Cleisthenes is HBBFT(Honey Badger Byzantine Fault Tolerance) consensus library adaptable to any application.
 
