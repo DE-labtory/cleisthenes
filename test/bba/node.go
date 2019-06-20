@@ -35,7 +35,7 @@ func New(n, f int, coinGenerator cleisthenes.CoinGenerator, addr cleisthenes.Add
 	connPool := cleisthenes.NewConnectionPool()
 	memberMap := cleisthenes.NewMemberMap()
 	binChan := cleisthenes.NewBinaryChannel(n)
-	bba := engine.New(n, f, *member, connPool, coinGenerator, binChan)
+	bba := engine.New(n, f, *member, cleisthenes.Member{}, connPool, coinGenerator, binChan)
 	return &Node{
 		addr:      addr,
 		bba:       bba,

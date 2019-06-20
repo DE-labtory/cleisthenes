@@ -58,6 +58,12 @@ func (c *contentLength) value() uint64 {
 	return c.length
 }
 
+type request struct {
+	sender cleisthenes.Member
+	data   cleisthenes.Request
+	err    chan error
+}
+
 type RBC struct {
 	// number of network nodes
 	n int
@@ -155,12 +161,12 @@ func (rbc *RBC) distributeMessage(proposer cleisthenes.Member, reqs []cleisthene
 		}
 
 		msgList = append(msgList, pb.Message{
+			Proposer:  proposer.Address.String(),
 			Sender:    rbc.owner.Address.String(),
 			Timestamp: ptypes.TimestampNow(),
 			Payload: &pb.Message_Rbc{
 				Rbc: &pb.RBC{
 					Payload:       payload,
-					Proposer:      proposer.Address.String(),
 					ContentLength: rbc.contentLength.value(),
 					Type:          typ,
 				},
@@ -187,12 +193,12 @@ func (rbc *RBC) shareMessage(proposer cleisthenes.Member, req cleisthenes.Reques
 		return err
 	}
 	rbc.broadcaster.ShareMessage(pb.Message{
+		Proposer:  proposer.Address.String(),
 		Sender:    rbc.owner.Address.String(),
 		Timestamp: ptypes.TimestampNow(),
 		Payload: &pb.Message_Rbc{
 			Rbc: &pb.RBC{
 				Payload:       payload,
-				Proposer:      proposer.Address.String(),
 				ContentLength: rbc.contentLength.value(),
 				Type:          typ,
 			},

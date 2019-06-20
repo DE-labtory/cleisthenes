@@ -13,18 +13,21 @@ message Message {
     // The signature of public key
     bytes signature = 1;
 
+    // The address of source member who sent this message first
+    string proposer = 2;
+
     // The address of sender member who sent this message
-    string sender = 2;
+    string sender = 3;
 
     // The time when the source sends
-    google.protobuf.Timestamp timestamp = 3;
+    google.protobuf.Timestamp timestamp = 4;
 
     // message's epoch
-    uint64 epoch = 4;
+    uint64 epoch = 5;
 
     oneof payload {
-        RBC rbc = 5;
-        BBA bba = 6;
+        RBC rbc = 6;
+        BBA bba = 7;
     }
 }
 
@@ -33,11 +36,8 @@ message RBC {
     // marshaled data by type
     bytes payload = 1;
 
-    // The address of source member who sent this message first
-    string proposer = 2;
-
     // The length of original data
-    uint64 contentLength = 3;
+    uint64 contentLength = 2;
 
     // payload type
     enum type {
@@ -53,7 +53,7 @@ message BBA {
     bytes payload = 1;
 
     // each epoch's BBA round, it is different with epoch
-    uint64 round = 3;
+    uint64 round = 2;
 
     // payload type
     enum type {
