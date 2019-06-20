@@ -1,6 +1,9 @@
 package cleisthenes
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 type mockTransaction struct {
 	name string
@@ -18,7 +21,7 @@ func TestQueue_peek(t *testing.T) {
 			name: "c",
 		},
 	}
-	que := NewQueue()
+	que := NewTxQueue()
 
 	_, err := que.peek()
 	if err == nil {
@@ -46,7 +49,7 @@ func TestQueue_Poll(t *testing.T) {
 			name: "c",
 		},
 	}
-	que := NewQueue()
+	que := NewTxQueue()
 
 	for i, input := range inputs {
 		que.Push(input)
@@ -58,7 +61,7 @@ func TestQueue_Poll(t *testing.T) {
 }
 
 func TestQueue_empty(t *testing.T) {
-	que := NewQueue()
+	que := NewTxQueue()
 	if !que.empty() {
 		t.Fatalf("test empty failed : after creating queue, empty() must return true")
 	}
@@ -75,7 +78,7 @@ func TestQueue_empty(t *testing.T) {
 }
 
 func TestQueue_len(t *testing.T) {
-	que := NewQueue()
+	que := NewTxQueue()
 	for i := 1; i < 10; i++ {
 		que.Push(&mockTransaction{name: "tx"})
 		if que.Len() != i {
@@ -102,7 +105,7 @@ func TestQueue_at(t *testing.T) {
 			name: "tx5",
 		},
 	}
-	que := NewQueue()
+	que := NewTxQueue()
 	for _, input := range inputs {
 		que.Push(input)
 	}
@@ -131,7 +134,7 @@ func TestQueue_Push(t *testing.T) {
 			name: "c",
 		},
 	}
-	que := NewQueue()
+	que := NewTxQueue()
 
 	for i, input := range inputs {
 		que.Push(input)
@@ -142,5 +145,178 @@ func TestQueue_Push(t *testing.T) {
 		if result, _ := que.at(que.Len() - 1); result != input {
 			t.Fatalf("test[%d] failed - queue's last element is invalid", i)
 		}
+	}
+}
+
+func TestHB_AddTransaction(t *testing.T) {
+	inputs := []Transaction{
+		&mockTransaction{
+			name: "tx1",
+		},
+		&mockTransaction{
+			name: "tx2",
+		},
+		&mockTransaction{
+			name: "tx3",
+		},
+	}
+	manager := NewDefaultTxQueueManager(NewTxQueue(), nil)
+
+	for i, input := range inputs {
+		manager.AddTransaction(input)
+
+		result, err := manager.txQueue.Poll()
+		if err != nil {
+			t.Fatalf("test[%d] failed : transaction is not pushed into queue", i)
+		}
+
+		if !reflect.DeepEqual(result, input) {
+			t.Fatalf("test[%d] failed : transaction is not pushed in FIFO order", i)
+		}
+	}
+}
+
+func TestHB_CreateBatch(t *testing.T) {
+	inputs := []Transaction{
+		&mockTransaction{
+			name: "tx1",
+		},
+		&mockTransaction{
+			name: "tx2",
+		},
+		&mockTransaction{
+			name: "tx3",
+		},
+	}
+	myBatch := 10
+	myNode := 8
+	manager := NewDefaultTxQueueManager(NewTxQueue(), nil)
+
+	for _, input := range inputs {
+		manager.AddTransaction(input)
+	}
+
+	outputs, err := manager.createBatch(myBatch, myNode)
+	if err != nil {
+		t.Fatalf("test failed : error occurred when polling transaction from queue")
+	}
+
+	checkIdx := make([]int, min(myBatch, myNode))
+
+	for i, output := range outputs.TxList() {
+		checkInclude := false
+		for j, input := range inputs {
+			if input == output {
+				checkInclude = true
+
+				if checkIdx[j] != 0 {
+					t.Fatalf("test[%d] failed : polled duplicated transaction", i)
+				}
+				checkIdx[j]++
+				break
+			}
+		}
+		if checkInclude == false {
+			t.Fatalf("test[%d] failed : transaction on queue is different from input", i)
+		}
+	}
+}
+
+func TestHB_LoadCandidateTx(t *testing.T) {
+	inputs := []Transaction{
+		&mockTransaction{
+			name: "tx1",
+		},
+		&mockTransaction{
+			name: "tx2",
+		},
+		&mockTransaction{
+			name: "tx3",
+		},
+	}
+	myBatch := 10
+	manager := NewDefaultTxQueueManager(NewTxQueue(), nil)
+
+	for _, input := range inputs {
+		manager.AddTransaction(input)
+	}
+
+	candidates, err := manager.loadCandidateTx(min(myBatch, manager.txQueue.Len()))
+
+	if err != nil {
+		t.Fatalf("test failed : error occurred when polling transaction from queue: err: %s", err.Error())
+	}
+
+	for i, candidate := range candidates {
+		checkInclude := false
+		for _, input := range inputs {
+			if input == candidate {
+				checkInclude = true
+				break
+			}
+		}
+		if checkInclude == false {
+			t.Fatalf("test[%d] failed : transaction of candidate is different from queue", i)
+		}
+	}
+}
+
+func TestHB_SelectRandomTx(t *testing.T) {
+	inputs := []Transaction{
+		&mockTransaction{
+			name: "tx1",
+		},
+		&mockTransaction{
+			name: "tx2",
+		},
+		&mockTransaction{
+			name: "tx3",
+		},
+		&mockTransaction{
+			name: "tx4",
+		},
+		&mockTransaction{
+			name: "tx5",
+		},
+	}
+	myBatch := 10
+	myNode := 8
+	manager := NewDefaultTxQueueManager(NewTxQueue(), nil)
+
+	for _, input := range inputs {
+		manager.AddTransaction(input)
+	}
+
+	candidate, err := manager.loadCandidateTx(min(myBatch, manager.txQueue.Len()))
+
+	if err != nil {
+		t.Fatalf("test failed : error occurred when polling transaction from queue")
+	}
+
+	batch, cleanUp := manager.selectRandomTx(candidate, int(myBatch/myNode))
+	checkIdx := make([]int, min(myBatch, myNode))
+
+	for i, output := range batch {
+		checkInclude := false
+		for j, input := range inputs {
+			if input == output {
+				checkInclude = true
+
+				if checkIdx[j] != 0 {
+					t.Fatalf("test[%d] failed : polled duplicated transaction", i)
+				}
+				checkIdx[j]++
+				break
+			}
+		}
+		if checkInclude == false {
+			t.Fatalf("test[%d] failed : transaction of batch is different from queue", i)
+		}
+	}
+
+	cleanUp()
+
+	if manager.txQueue.Len()+len(batch) != len(inputs) {
+		t.Fatalf("test failed : cleanUp failed : some transactions missed")
 	}
 }
