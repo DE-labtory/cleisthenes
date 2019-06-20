@@ -25,7 +25,8 @@ type BBA struct {
 	*sync.RWMutex
 	cleisthenes.Tracer
 
-	owner cleisthenes.Member
+	owner    cleisthenes.Member
+	proposer cleisthenes.Member
 	// number of network nodes
 	n int
 	// number of byzantine nodes which can tolerate
@@ -62,15 +63,17 @@ func New(
 	n int,
 	f int,
 	owner cleisthenes.Member,
+	proposer cleisthenes.Member,
 	broadcaster cleisthenes.Broadcaster,
 	coinGenerator cleisthenes.CoinGenerator,
 	binInputChan cleisthenes.BinarySender,
 ) *BBA {
 	instance := &BBA{
-		owner: owner,
-		n:     n,
-		f:     f,
-		round: 1,
+		owner:    owner,
+		proposer: proposer,
+		n:        n,
+		f:        f,
+		round:    1,
 
 		binValueSet:        newBinarySet(),
 		broadcastedBvalSet: newBinarySet(),
@@ -313,6 +316,7 @@ func (bba *BBA) broadcast(req cleisthenes.Request) error {
 		return err
 	}
 	bba.broadcaster.ShareMessage(pb.Message{
+		Proposer:  bba.proposer.Address.String(),
 		Sender:    bba.owner.Address.String(),
 		Timestamp: ptypes.TimestampNow(),
 		Payload: &pb.Message_Bba{

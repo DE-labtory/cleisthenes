@@ -183,9 +183,9 @@ func (n *Node) serveRequestFunc(msg cleisthenes.Message) {
 	}
 	sender := n.memberMap.Member(senderAddr)
 
-	proposerAddr, err := cleisthenes.ToAddress(msg.GetRbc().Proposer)
+	proposerAddr, err := cleisthenes.ToAddress(msg.Proposer)
 	if err != nil {
-		iLogger.Fatalf(nil, "[HANDLER] invalid proposer address : %s", msg.GetRbc().Proposer)
+		iLogger.Fatalf(nil, "[HANDLER] invalid proposer address : %s", msg.Proposer)
 	}
 	r := n.rbcMap[proposerAddr]
 	if err := r.HandleMessage(sender, &pb.Message_Rbc{

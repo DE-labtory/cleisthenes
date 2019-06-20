@@ -52,20 +52,6 @@ type (
 	}
 )
 
-type (
-	request struct {
-		sender cleisthenes.Member
-		data   cleisthenes.Request
-		err    chan error
-	}
-
-	// InnerRequest used in channel when send messages
-	InputMessage struct {
-		reqs []request
-		err  error
-	}
-)
-
 func NewEchoReqRepository() *EchoReqRepository {
 
 	return &EchoReqRepository{
