@@ -1,0 +1,12 @@
+honeybadger:
+  networksize: 10
+  byzantine: 3
+
+members:
+  addresses:
+  - "localhost:8080"
+  - "localhost:8081"
+
+tpke:
+  masterPublicKey: asdf
+  threshold: 3
