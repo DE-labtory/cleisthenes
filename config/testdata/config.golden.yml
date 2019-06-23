@@ -1,3 +1,6 @@
+identity:
+  address: "localhost:5555"
+
 honeybadger:
   networksize: 10
   byzantine: 3

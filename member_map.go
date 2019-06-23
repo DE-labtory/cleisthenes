@@ -31,7 +31,7 @@ func ToAddress(addrStr string) (Address, error) {
 	}, nil
 }
 
-// Member contains node information who participate in the network
+// Member contains Node information who participate in the network
 type Member struct {
 	Address Address
 }

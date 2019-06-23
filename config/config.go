@@ -8,6 +8,10 @@ import (
 	"github.com/spf13/viper"
 )
 
+type Identity struct {
+	Address string
+}
+
 type HoneyBadger struct {
 	NetworkSize int
 	Byzantine   int
@@ -22,8 +26,18 @@ type Tpke struct {
 	Threshold       int
 }
 
+type Config struct {
+	Identity    Identity
+	HoneyBadger HoneyBadger
+	Members     Members
+	Tpke        Tpke
+}
+
 // TODO: change default config
 var defaultConfig = &Config{
+	Identity: Identity{
+		Address: "localhost:5555",
+	},
 	HoneyBadger: HoneyBadger{
 		NetworkSize: 10,
 		Byzantine:   3,
@@ -43,12 +57,6 @@ var defaultConfig = &Config{
 var once sync.Once
 
 var configPath = os.Getenv("HOME") + "/.cleisthenes/config.yml"
-
-type Config struct {
-	HoneyBadger HoneyBadger
-	Members     Members
-	Tpke        Tpke
-}
 
 func Path() string {
 	return configPath
