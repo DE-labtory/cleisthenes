@@ -7,7 +7,8 @@ import (
 	"net/http"
 	"reflect"
 
-	"github.com/DE-labtory/cleisthenes"
+	"github.com/DE-labtory/cleisthenes/core"
+
 	kitendpoint "github.com/go-kit/kit/endpoint"
 	kitlog "github.com/go-kit/kit/log"
 	kithttp "github.com/go-kit/kit/transport/http"
@@ -24,17 +25,17 @@ func (e ErrIllegalArgument) Error() string {
 
 type endpoint struct {
 	logger kitlog.Logger
-	hbbft  cleisthenes.Hbbft
+	hbbft  core.Hbbft
 }
 
-func newEndpoint(hbbft cleisthenes.Hbbft, logger kitlog.Logger) *endpoint {
+func newEndpoint(hbbft core.Hbbft, logger kitlog.Logger) *endpoint {
 	return &endpoint{
 		logger: logger,
 		hbbft:  hbbft,
 	}
 }
 
-func NewApiHandler(hbbft cleisthenes.Hbbft, logger kitlog.Logger) http.Handler {
+func NewApiHandler(hbbft core.Hbbft, logger kitlog.Logger) http.Handler {
 	endpoint := newEndpoint(hbbft, logger)
 	r := mux.NewRouter()
 
@@ -70,7 +71,7 @@ func (e *endpoint) proposeTx(ctx context.Context, request interface{}) (interfac
 func (e *endpoint) makeProposeTxEndpoint() kitendpoint.Endpoint {
 	return func(ctx context.Context, request interface{}) (interface{}, error) {
 		req := request.(ProposeTxRequest)
-		return ProposeTxResponse{}, e.hbbft.Propose(req.Transaction)
+		return ProposeTxResponse{}, e.hbbft.Submit(req.Transaction)
 	}
 }
 

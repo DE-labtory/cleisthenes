@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestSetGetConfiguration(t *testing.T) {
+func TestGetConfiguration(t *testing.T) {
 	configPath = os.Getenv("GOPATH") + "/src/github.com/DE-labtory/cleisthenes/config/testdata/config.golden.yml"
 
 	c := Get()

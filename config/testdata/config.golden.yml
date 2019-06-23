@@ -1,15 +1,12 @@
 identity:
-  address: "localhost:5555"
-
+  address: localhost:5555
 honeybadger:
   networksize: 10
   byzantine: 3
-
 members:
   addresses:
-  - "localhost:8080"
-  - "localhost:8081"
-
+  - localhost:8080
+  - localhost:8081
 tpke:
-  masterPublicKey: asdf
+  masterpublickey: asdf
   threshold: 3

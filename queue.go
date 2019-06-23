@@ -96,7 +96,7 @@ func (q *MemTxQueue) Push(tx Transaction) {
 }
 
 type TxQueueManager interface {
-	AddTransaction(tx Transaction)
+	AddTransaction(tx Transaction) error
 }
 
 type DefaultTxQueueManager struct {
@@ -117,10 +117,12 @@ func (m *DefaultTxQueueManager) ReceiveBatch(batch Batch) {
 	// follow default policy then create batch
 }
 
-func (m *DefaultTxQueueManager) AddTransaction(tx Transaction) {
+func (m *DefaultTxQueueManager) AddTransaction(tx Transaction) error {
 	// validate transaction
 
 	m.txQueue.Push(tx)
+
+	return nil
 }
 
 // Create batch polling random transaction in queue

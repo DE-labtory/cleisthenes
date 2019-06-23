@@ -9,9 +9,16 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-func Init(configPath string) error {
-	if configPath != "" {
-		conf, err := readConfigFile(configPath)
+// Init either receive custom config path or not from client
+//
+// 1. if custom config path is received it reads config file from that path
+// and saves that config to ~/.cleisthenes/config/
+//
+// 2. if custom config path is empty. then it reads default config and
+// write it down to ~/.cleisthenes/config/
+func Init(customConfigPath string) error {
+	if customConfigPath != "" {
+		conf, err := readConfigFile(customConfigPath)
 		if err != nil {
 			return err
 		}
