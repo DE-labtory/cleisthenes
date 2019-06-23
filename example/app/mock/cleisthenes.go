@@ -3,6 +3,8 @@ package mock
 import (
 	"errors"
 
+	"github.com/DE-labtory/cleisthenes/core"
+
 	"github.com/DE-labtory/cleisthenes/config"
 
 	"github.com/DE-labtory/cleisthenes"
@@ -14,11 +16,11 @@ type Node struct {
 	logger log.Logger
 }
 
-func NewMockNode(logger log.Logger) cleisthenes.Hbbft {
+func NewMockNode(logger log.Logger) core.Hbbft {
 	return &Node{logger: logger}
 }
 
-func (n *Node) Propose(tx cleisthenes.Transaction) error {
+func (n *Node) Submit(tx cleisthenes.Transaction) error {
 	transaction, ok := tx.(app.Transaction)
 	if !ok {
 		return errors.New("invalid transaction type")

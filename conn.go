@@ -238,3 +238,7 @@ func (p *ConnectionPool) Remove(addr Address) {
 
 	delete(p.connMap, addr)
 }
+
+type MessageEndpoint interface {
+	HandleMessage(*pb.Message) error
+}
