@@ -6,7 +6,6 @@ import (
 	"time"
 
 	initCmd "github.com/DE-labtory/cleisthenes/cmd/cleisthenes/init"
-	startCmd "github.com/DE-labtory/cleisthenes/cmd/cleisthenes/start"
 	"github.com/urfave/cli"
 )
 
@@ -32,7 +31,6 @@ func main() {
 
 	app.Commands = []cli.Command{}
 	app.Commands = append(app.Commands, initCmd.Cmd())
-	app.Commands = append(app.Commands, startCmd.Cmd())
 
 	err := app.Run(os.Args)
 	if err != nil {

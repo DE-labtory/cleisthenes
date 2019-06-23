@@ -9,6 +9,7 @@ require (
 	github.com/go-kit/kit v0.8.0
 	github.com/golang/protobuf v1.3.1
 	github.com/google/uuid v1.1.1
+	github.com/gorilla/mux v1.7.2
 	github.com/klauspost/cpuid v1.2.1 // indirect
 	github.com/klauspost/reedsolomon v1.9.1
 	github.com/kyokomi/emoji v2.1.0+incompatible

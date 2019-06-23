@@ -4,12 +4,9 @@ import (
 	"os"
 
 	"github.com/DE-labtory/cleisthenes/config"
-	"github.com/fatih/color"
 	"github.com/kyokomi/emoji"
 	"github.com/urfave/cli"
 )
-
-var bold = color.New(color.Bold)
 
 func Cmd() cli.Command {
 	return cli.Command{
