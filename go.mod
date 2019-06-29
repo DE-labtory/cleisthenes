@@ -4,6 +4,7 @@ go 1.12
 
 require (
 	github.com/DE-labtory/iLogger v1.0.0
+	github.com/DE-labtory/tpke v0.0.0-20190710130448-03a30729cfa9
 	github.com/cbergoon/merkletree v0.0.0-20190307191648-015148bca400
 	github.com/go-kit/kit v0.8.0
 	github.com/golang/protobuf v1.3.1

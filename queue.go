@@ -1,9 +1,11 @@
 package cleisthenes
 
 import (
+	"errors"
 	"fmt"
 	"math/rand"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -95,20 +97,45 @@ func (q *MemTxQueue) Push(tx Transaction) {
 	q.txs = append(q.txs, tx)
 }
 
+type TxVerifyFunc func(Transaction) bool
+
 type TxQueueManager interface {
-	AddTransaction(tx Transaction) error
+	AddTransaction(tx Transaction, fn TxVerifyFunc) error
 }
 
 type DefaultTxQueueManager struct {
 	txQueue TxQueue
 	hb      HoneyBadger
+
+	stopFlag int32
+
+	blockSize int
+	batchSize int
+
+	closeChan chan struct{}
+
+	tryInterval time.Duration
 }
 
-func NewDefaultTxQueueManager(txQueue TxQueue, hb HoneyBadger) *DefaultTxQueueManager {
-	return &DefaultTxQueueManager{
+func NewDefaultTxQueueManager(
+	txQueue TxQueue,
+	hb HoneyBadger,
+	//blockSize int,
+	//batchSize int,
+	//tryInterval time.Duration,
+) *DefaultTxQueueManager {
+	m := &DefaultTxQueueManager{
 		txQueue: txQueue,
 		hb:      hb,
+		//blockSize: blockSize,
+		//batchSize: batchSize,
+		closeChan: make(chan struct{}),
+		//tryInterval: tryInterval,
 	}
+
+	go m.run()
+
+	return m
 }
 
 func (m *DefaultTxQueueManager) ReceiveBatch(batch Batch) {
@@ -117,25 +144,55 @@ func (m *DefaultTxQueueManager) ReceiveBatch(batch Batch) {
 	// follow default policy then create batch
 }
 
-func (m *DefaultTxQueueManager) AddTransaction(tx Transaction) error {
-	// validate transaction
-
+func (m *DefaultTxQueueManager) AddTransaction(tx Transaction, isValid TxVerifyFunc) error {
+	if !isValid(tx) {
+		return errors.New(fmt.Sprintf("error invalid transaction: %v", tx))
+	}
 	m.txQueue.Push(tx)
-
 	return nil
 }
 
-// Create batch polling random transaction in queue
-func (m *DefaultTxQueueManager) createBatch(n, b int) (Batch, error) {
-	candidate, err := m.loadCandidateTx(min(b, m.txQueue.Len()))
+func (m *DefaultTxQueueManager) Close() {
+	if first := atomic.CompareAndSwapInt32(&m.stopFlag, int32(0), int32(1)); !first {
+		return
+	}
+	m.closeChan <- struct{}{}
+	<-m.closeChan
+}
+
+func (m *DefaultTxQueueManager) toDie() bool {
+	return atomic.LoadInt32(&(m.stopFlag)) == int32(1)
+}
+
+func (m *DefaultTxQueueManager) run() {
+	for !m.toDie() {
+		m.tryPropose()
+		time.Sleep(m.tryInterval)
+	}
+}
+
+func (m *DefaultTxQueueManager) tryPropose() error {
+	if m.txQueue.Len() < int(m.batchSize) {
+		return nil
+	}
+	contribution, err := m.createContribution()
 	if err != nil {
-		return Batch{}, err
+		return err
+	}
+	return m.hb.HandleContribution(contribution)
+}
+
+// Create batch polling random transaction in queue
+func (m *DefaultTxQueueManager) createContribution() (Contribution, error) {
+	candidate, err := m.loadCandidateTx(min(m.blockSize, m.txQueue.Len()))
+	if err != nil {
+		return Contribution{}, err
 	}
 
-	batch, cleanUp := m.selectRandomTx(candidate, int(b/n))
+	batch, cleanUp := m.selectRandomTx(candidate, m.batchSize)
 	defer cleanUp()
 
-	return Batch{txList: batch}, nil
+	return Contribution{txList: batch}, nil
 }
 
 // loadCandidateTx is a function that returns transactions from queue

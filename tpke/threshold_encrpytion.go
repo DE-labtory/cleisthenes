@@ -2,7 +2,7 @@ package tpke
 
 import (
 	"github.com/DE-labtory/cleisthenes"
-	"github.com/DE-labtory/tpke"
+	tpk "github.com/DE-labtory/tpke"
 )
 
 type Config struct {
@@ -12,17 +12,17 @@ type Config struct {
 
 type Tpke struct {
 	threshold    int
-	publicKey    *tpke.PublicKey
-	publicKeySet *tpke.PublicKeySet
-	secretKey    *tpke.SecretKeyShare
-	decShares    map[string]*tpke.DecryptionShare
+	publicKey    *tpk.PublicKey
+	publicKeySet *tpk.PublicKeySet
+	secretKey    *tpk.SecretKeyShare
+	decShares    map[string]*tpk.DecryptionShare
 }
 
 func NewTpke(th int, skStr cleisthenes.SecretKey, pksStr cleisthenes.PublicKey) (*Tpke, error) {
-	sk := tpke.NewSecretKeyFromBytes(skStr)
-	sks := tpke.NewSecretKeyShare(sk)
+	sk := tpk.NewSecretKeyFromBytes(skStr)
+	sks := tpk.NewSecretKeyShare(sk)
 
-	pks, err := tpke.NewPublicKeySetFromBytes(pksStr)
+	pks, err := tpk.NewPublicKeySetFromBytes(pksStr)
 	if err != nil {
 		return nil, err
 	}
@@ -32,17 +32,17 @@ func NewTpke(th int, skStr cleisthenes.SecretKey, pksStr cleisthenes.PublicKey) 
 		publicKeySet: pks,
 		publicKey:    pks.PublicKey(),
 		secretKey:    sks,
-		decShares:    make(map[string]*tpke.DecryptionShare),
+		decShares:    make(map[string]*tpk.DecryptionShare),
 	}, nil
 }
 
 func (t *Tpke) AcceptDecShare(addr cleisthenes.Address, decShare cleisthenes.DecryptionShare) {
-	ds := tpke.NewDecryptionShareFromBytes(decShare)
+	ds := tpk.NewDecryptionShareFromBytes(decShare)
 	t.decShares[addr.String()] = ds
 }
 
 func (t *Tpke) ClearDecShare() {
-	t.decShares = make(map[string]*tpke.DecryptionShare)
+	t.decShares = make(map[string]*tpk.DecryptionShare)
 }
 
 // Encrypt encrypts some byte array message.
@@ -56,17 +56,17 @@ func (t *Tpke) Encrypt(msg []byte) ([]byte, error) {
 
 // DecShare makes decryption share using each secret key.
 func (t *Tpke) DecShare(ctb cleisthenes.CipherText) cleisthenes.DecryptionShare {
-	ct := tpke.NewCipherTextFromBytes(ctb)
+	ct := tpk.NewCipherTextFromBytes(ctb)
 	ds := t.secretKey.DecryptShare(ct)
 	return ds.Serialize()
 }
 
 // Decrypt collects decryption share, and combine it for decryption.
 func (t *Tpke) Decrypt(decShares map[string]cleisthenes.DecryptionShare, ctBytes []byte) ([]byte, error) {
-	ct := tpke.NewCipherTextFromBytes(ctBytes)
-	ds := make(map[string]*tpke.DecryptionShare)
+	ct := tpk.NewCipherTextFromBytes(ctBytes)
+	ds := make(map[string]*tpk.DecryptionShare)
 	for id, decShare := range decShares {
-		ds[id] = tpke.NewDecryptionShareFromBytes(decShare)
+		ds[id] = tpk.NewDecryptionShareFromBytes(decShare)
 	}
 	return t.publicKeySet.DecryptUsingStringMap(ds, ct)
 }

@@ -37,6 +37,7 @@ type Node struct {
 	client          *cleisthenes.GrpcClient
 	connPool        *cleisthenes.ConnectionPool
 	memberMap       *cleisthenes.MemberMap
+	txValidator     cleisthenes.TxVerifyFunc
 }
 
 func New() (Hbbft, error) {
@@ -84,7 +85,7 @@ func (n *Node) Run() {
 }
 
 func (n *Node) Submit(tx cleisthenes.Transaction) error {
-	return n.txQueueManager.AddTransaction(tx)
+	return n.txQueueManager.AddTransaction(tx, n.txValidator)
 }
 
 func (n *Node) Connect() error {

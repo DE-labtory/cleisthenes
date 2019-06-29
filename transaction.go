@@ -11,3 +11,11 @@ type Batch struct {
 func (batch *Batch) TxList() []Transaction {
 	return batch.txList
 }
+
+type Contribution struct {
+	txList []Transaction
+}
+
+func (c *Contribution) TxList() []Transaction {
+	return c.txList
+}
