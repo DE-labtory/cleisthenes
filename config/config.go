@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -13,8 +14,10 @@ type Identity struct {
 }
 
 type HoneyBadger struct {
-	NetworkSize int
-	Byzantine   int
+	NetworkSize     int
+	Byzantine       int
+	BatchSize       int
+	ProposeInterval time.Duration
 }
 
 type Members struct {
@@ -39,8 +42,10 @@ var defaultConfig = &Config{
 		Address: "localhost:5555",
 	},
 	HoneyBadger: HoneyBadger{
-		NetworkSize: 10,
-		Byzantine:   3,
+		NetworkSize:     10,
+		Byzantine:       3,
+		BatchSize:       3,
+		ProposeInterval: 1 * time.Second,
 	},
 	Members: Members{
 		Addresses: []string{

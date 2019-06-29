@@ -109,8 +109,8 @@ type DefaultTxQueueManager struct {
 
 	stopFlag int32
 
-	blockSize int
 	batchSize int
+	blockSize int
 
 	closeChan chan struct{}
 
@@ -120,28 +120,26 @@ type DefaultTxQueueManager struct {
 func NewDefaultTxQueueManager(
 	txQueue TxQueue,
 	hb HoneyBadger,
-	//blockSize int,
-	//batchSize int,
-	//tryInterval time.Duration,
+	batchSize int,
+	blockSize int,
+
+	// tryInterval is time interval to try create contribution
+	// then propose to honeybadger component
+	tryInterval time.Duration,
 ) *DefaultTxQueueManager {
 	m := &DefaultTxQueueManager{
-		txQueue: txQueue,
-		hb:      hb,
-		//blockSize: blockSize,
-		//batchSize: batchSize,
-		closeChan: make(chan struct{}),
-		//tryInterval: tryInterval,
+		txQueue:   txQueue,
+		hb:        hb,
+		batchSize: batchSize,
+		blockSize: blockSize,
+
+		closeChan:   make(chan struct{}),
+		tryInterval: tryInterval,
 	}
 
-	go m.run()
+	go m.runContributionProposeRoutine()
 
 	return m
-}
-
-func (m *DefaultTxQueueManager) ReceiveBatch(batch Batch) {
-	// send consensused batch to application
-
-	// follow default policy then create batch
 }
 
 func (m *DefaultTxQueueManager) AddTransaction(tx Transaction, isValid TxVerifyFunc) error {
@@ -164,13 +162,15 @@ func (m *DefaultTxQueueManager) toDie() bool {
 	return atomic.LoadInt32(&(m.stopFlag)) == int32(1)
 }
 
-func (m *DefaultTxQueueManager) run() {
+func (m *DefaultTxQueueManager) runContributionProposeRoutine() {
 	for !m.toDie() {
 		m.tryPropose()
 		time.Sleep(m.tryInterval)
 	}
 }
 
+// tryPropose create contribution and send it to honeybadger only when
+// transaction queue size is larger than batch size
 func (m *DefaultTxQueueManager) tryPropose() error {
 	if m.txQueue.Len() < int(m.batchSize) {
 		return nil
