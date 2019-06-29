@@ -1,5 +1,11 @@
 package cleisthenes
 
+// Batch is result of ACS set of contributions of
+// at least n-f number of nodes.
+// BatchMessage is used between ACS component and Honeybadger component.
+//
+// After ACS done its own task for its epoch send BatchMessage to
+// Honeybadger, then Honeybadger decrypt batch message.
 type BatchMessage struct {
 	Batch map[Member][]byte
 }
@@ -27,5 +33,43 @@ func (c *BatchChannel) Send(msg BatchMessage) {
 }
 
 func (c *BatchChannel) Receive() <-chan BatchMessage {
+	return c.buffer
+}
+
+// ResultMessage is result of Honeybadger. When Honeybadger receive
+// BatchMessage from ACS, it decrypt BatchMessage and use it to
+// ResultMessage.Batch field.
+//
+// Honeybadger knows what epoch of ACS done its task. and Honeybadger
+// use that information of epoch and decrypted batch to create ResultMessage
+// then send it back to application
+type ResultMessage struct {
+	Epoch Epoch
+	Batch map[Member][]byte
+}
+
+type ResultSender interface {
+	Send(msg ResultMessage)
+}
+
+type ResultReceiver interface {
+	Receive() <-chan ResultMessage
+}
+
+type ResultChannel struct {
+	buffer chan ResultMessage
+}
+
+func NewResultChannel() *ResultChannel {
+	return &ResultChannel{
+		buffer: make(chan ResultMessage, 1),
+	}
+}
+
+func (c *ResultChannel) Send(msg ResultMessage) {
+	c.buffer <- msg
+}
+
+func (c *ResultChannel) Receive() <-chan ResultMessage {
 	return c.buffer
 }

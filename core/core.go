@@ -48,12 +48,28 @@ func New() (Hbbft, error) {
 		return nil, err
 	}
 
+	memberMap := cleisthenes.NewMemberMap()
+	memberMap.Add(&cleisthenes.Member{Address: addr})
+	for _, addrStr := range conf.Members.Addresses {
+		addr, err := cleisthenes.ToAddress(addrStr)
+		if err != nil {
+			return nil, err
+		}
+		memberMap.Add(&cleisthenes.Member{Address: addr})
+	}
+
 	txQueue := cleisthenes.NewTxQueue()
 	hb := honeybadger.New()
 
 	return &Node{
-		addr:            addr,
-		txQueueManager:  cleisthenes.NewDefaultTxQueueManager(txQueue, hb),
+		addr: addr,
+		txQueueManager: cleisthenes.NewDefaultTxQueueManager(
+			txQueue,
+			hb,
+			conf.HoneyBadger.BatchSize,
+			conf.HoneyBadger.BatchSize*len(memberMap.Members()),
+			conf.HoneyBadger.ProposeInterval,
+		),
 		batchReceiver:   cleisthenes.NewBatchChannel(),
 		messageEndpoint: hb,
 		server:          cleisthenes.NewServer(addr),

@@ -3,6 +3,8 @@ identity:
 honeybadger:
   networksize: 10
   byzantine: 3
+  batchsize: 3
+  proposeinterval: 1s
 members:
   addresses:
   - localhost:8080
