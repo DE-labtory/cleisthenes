@@ -3,10 +3,28 @@ package cleisthenes
 import (
 	"reflect"
 	"testing"
+
+	"github.com/DE-labtory/cleisthenes/pb"
 )
 
 type mockTransaction struct {
 	name string
+}
+
+var mockTxVerifier = func(Transaction) bool {
+	return true
+}
+
+type MockHoneyBadger struct {
+	HandleContributionFunc func(contribution Contribution) error
+	HandleMessageFunc      func(msg *pb.Message) error
+}
+
+func (hb *MockHoneyBadger) HandleContribution(contribution Contribution) error {
+	return nil
+}
+func (hb *MockHoneyBadger) HandleMessage(msg *pb.Message) error {
+	return nil
 }
 
 func TestQueue_peek(t *testing.T) {
@@ -148,7 +166,7 @@ func TestQueue_Push(t *testing.T) {
 	}
 }
 
-func TestHB_AddTransaction(t *testing.T) {
+func TestDefaultTxQueueManager_AddTransaction(t *testing.T) {
 	inputs := []Transaction{
 		&mockTransaction{
 			name: "tx1",
@@ -160,10 +178,14 @@ func TestHB_AddTransaction(t *testing.T) {
 			name: "tx3",
 		},
 	}
-	manager := NewDefaultTxQueueManager(NewTxQueue(), nil)
+
+	hb := &MockHoneyBadger{}
+	manager := NewDefaultTxQueueManager(NewTxQueue(), hb)
 
 	for i, input := range inputs {
-		manager.AddTransaction(input)
+		manager.AddTransaction(input, func(transaction Transaction) bool {
+			return true
+		})
 
 		result, err := manager.txQueue.Poll()
 		if err != nil {
@@ -176,7 +198,7 @@ func TestHB_AddTransaction(t *testing.T) {
 	}
 }
 
-func TestHB_CreateBatch(t *testing.T) {
+func TestDefaultTxQueueManager_CreateBatch(t *testing.T) {
 	inputs := []Transaction{
 		&mockTransaction{
 			name: "tx1",
@@ -190,13 +212,14 @@ func TestHB_CreateBatch(t *testing.T) {
 	}
 	myBatch := 10
 	myNode := 8
-	manager := NewDefaultTxQueueManager(NewTxQueue(), nil)
+	hb := &MockHoneyBadger{}
+	manager := NewDefaultTxQueueManager(NewTxQueue(), hb)
 
 	for _, input := range inputs {
-		manager.AddTransaction(input)
+		manager.AddTransaction(input, mockTxVerifier)
 	}
 
-	outputs, err := manager.createBatch(myBatch, myNode)
+	outputs, err := manager.createContribution()
 	if err != nil {
 		t.Fatalf("test failed : error occurred when polling transaction from queue")
 	}
@@ -222,7 +245,7 @@ func TestHB_CreateBatch(t *testing.T) {
 	}
 }
 
-func TestHB_LoadCandidateTx(t *testing.T) {
+func TestDefaultTxQueueManager_LoadCandidateTx(t *testing.T) {
 	inputs := []Transaction{
 		&mockTransaction{
 			name: "tx1",
@@ -235,10 +258,11 @@ func TestHB_LoadCandidateTx(t *testing.T) {
 		},
 	}
 	myBatch := 10
-	manager := NewDefaultTxQueueManager(NewTxQueue(), nil)
+	hb := &MockHoneyBadger{}
+	manager := NewDefaultTxQueueManager(NewTxQueue(), hb)
 
 	for _, input := range inputs {
-		manager.AddTransaction(input)
+		manager.AddTransaction(input, mockTxVerifier)
 	}
 
 	candidates, err := manager.loadCandidateTx(min(myBatch, manager.txQueue.Len()))
@@ -261,7 +285,7 @@ func TestHB_LoadCandidateTx(t *testing.T) {
 	}
 }
 
-func TestHB_SelectRandomTx(t *testing.T) {
+func TestDefaultTxQueueManager_SelectRandomTx(t *testing.T) {
 	inputs := []Transaction{
 		&mockTransaction{
 			name: "tx1",
@@ -281,10 +305,11 @@ func TestHB_SelectRandomTx(t *testing.T) {
 	}
 	myBatch := 10
 	myNode := 8
-	manager := NewDefaultTxQueueManager(NewTxQueue(), nil)
+	hb := &MockHoneyBadger{}
+	manager := NewDefaultTxQueueManager(NewTxQueue(), hb)
 
 	for _, input := range inputs {
-		manager.AddTransaction(input)
+		manager.AddTransaction(input, mockTxVerifier)
 	}
 
 	candidate, err := manager.loadCandidateTx(min(myBatch, manager.txQueue.Len()))

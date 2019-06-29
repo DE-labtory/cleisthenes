@@ -68,6 +68,7 @@ func (m *MemberMap) Members() []Member {
 	return members
 }
 
+// TODO: change return type Member -> (Member, bool)
 func (m *MemberMap) Member(addr Address) Member {
 	m.lock.Lock()
 	defer m.lock.Unlock()
