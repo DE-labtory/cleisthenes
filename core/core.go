@@ -3,6 +3,8 @@ package core
 import (
 	"fmt"
 
+	"github.com/DE-labtory/cleisthenes/tpke"
+
 	"github.com/DE-labtory/cleisthenes"
 
 	"github.com/DE-labtory/cleisthenes/config"
@@ -26,21 +28,22 @@ func (h *handler) ServeRequest(msg cleisthenes.Message) {
 type Hbbft interface {
 	Submit(tx cleisthenes.Transaction) error
 	Run()
+	Result() <-chan cleisthenes.ResultMessage
 }
 
 type Node struct {
 	addr            cleisthenes.Address
 	txQueueManager  cleisthenes.TxQueueManager
-	batchReceiver   cleisthenes.BatchReceiver
+	resultReceiver  cleisthenes.ResultReceiver
 	messageEndpoint cleisthenes.MessageEndpoint
 	server          *cleisthenes.GrpcServer
 	client          *cleisthenes.GrpcClient
 	connPool        *cleisthenes.ConnectionPool
 	memberMap       *cleisthenes.MemberMap
-	txValidator     cleisthenes.TxVerifyFunc
+	txValidator     cleisthenes.TxValidator
 }
 
-func New() (Hbbft, error) {
+func New(txValidator cleisthenes.TxValidator) (Hbbft, error) {
 	conf := config.Get()
 
 	addr, err := cleisthenes.ToAddress(conf.Identity.Address)
@@ -49,17 +52,34 @@ func New() (Hbbft, error) {
 	}
 
 	memberMap := cleisthenes.NewMemberMap()
-	memberMap.Add(&cleisthenes.Member{Address: addr})
-	for _, addrStr := range conf.Members.Addresses {
-		addr, err := cleisthenes.ToAddress(addrStr)
-		if err != nil {
-			return nil, err
-		}
-		memberMap.Add(&cleisthenes.Member{Address: addr})
-	}
+	memberMap.Add(cleisthenes.NewMemberWithAddress(addr))
+
+	connPool := cleisthenes.NewConnectionPool()
+
+	dataChan := cleisthenes.NewDataChannel(conf.HoneyBadger.NetworkSize)
+	batchChan := cleisthenes.NewBatchChannel(conf.HoneyBadger.NetworkSize)
+	binChan := cleisthenes.NewBinaryChannel(conf.HoneyBadger.NetworkSize)
+	resultChan := cleisthenes.NewResultChannel(conf.HoneyBadger.NetworkSize)
 
 	txQueue := cleisthenes.NewTxQueue()
-	hb := honeybadger.New()
+	hb := honeybadger.New(
+		memberMap,
+		honeybadger.NewDefaultACSFactory(
+			conf.HoneyBadger.NetworkSize,
+			conf.HoneyBadger.Byzantine,
+			*cleisthenes.NewMemberWithAddress(addr),
+			*memberMap,
+			dataChan,
+			dataChan,
+			binChan,
+			binChan,
+			batchChan,
+			connPool,
+		),
+		&tpke.MockTpke{},
+		batchChan,
+		resultChan,
+	)
 
 	return &Node{
 		addr: addr,
@@ -69,12 +89,13 @@ func New() (Hbbft, error) {
 			conf.HoneyBadger.BatchSize,
 			conf.HoneyBadger.BatchSize*len(memberMap.Members()),
 			conf.HoneyBadger.ProposeInterval,
+			txValidator,
 		),
-		batchReceiver:   cleisthenes.NewBatchChannel(),
+		resultReceiver:  resultChan,
 		messageEndpoint: hb,
 		server:          cleisthenes.NewServer(addr),
 		client:          cleisthenes.NewClient(),
-		connPool:        cleisthenes.NewConnectionPool(),
+		connPool:        connPool,
 		memberMap:       cleisthenes.NewMemberMap(),
 	}, nil
 }
@@ -101,7 +122,7 @@ func (n *Node) Run() {
 }
 
 func (n *Node) Submit(tx cleisthenes.Transaction) error {
-	return n.txQueueManager.AddTransaction(tx, n.txValidator)
+	return n.txQueueManager.AddTransaction(tx)
 }
 
 func (n *Node) Connect() error {
@@ -133,7 +154,7 @@ func (n *Node) connect(addr cleisthenes.Address) error {
 	}()
 
 	n.connPool.Add(addr, conn)
-	n.memberMap.Add(&cleisthenes.Member{Address: addr})
+	n.memberMap.Add(cleisthenes.NewMemberWithAddress(addr))
 	return nil
 }
 
@@ -144,6 +165,6 @@ func (n *Node) Close() {
 	}
 }
 
-func (n *Node) Result() <-chan cleisthenes.BatchMessage {
-	return n.batchReceiver.Receive()
+func (n *Node) Result() <-chan cleisthenes.ResultMessage {
+	return n.resultReceiver.Receive()
 }

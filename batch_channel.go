@@ -7,6 +7,7 @@ package cleisthenes
 // After ACS done its own task for its epoch send BatchMessage to
 // Honeybadger, then Honeybadger decrypt batch message.
 type BatchMessage struct {
+	Epoch Epoch
 	Batch map[Member][]byte
 }
 
@@ -22,9 +23,9 @@ type BatchChannel struct {
 	buffer chan BatchMessage
 }
 
-func NewBatchChannel() *BatchChannel {
+func NewBatchChannel(size int) *BatchChannel {
 	return &BatchChannel{
-		buffer: make(chan BatchMessage, 1),
+		buffer: make(chan BatchMessage, size),
 	}
 }
 
@@ -60,9 +61,9 @@ type ResultChannel struct {
 	buffer chan ResultMessage
 }
 
-func NewResultChannel() *ResultChannel {
+func NewResultChannel(size int) *ResultChannel {
 	return &ResultChannel{
-		buffer: make(chan ResultMessage, 1),
+		buffer: make(chan ResultMessage, size),
 	}
 }
 

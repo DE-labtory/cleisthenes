@@ -82,7 +82,7 @@ func setupACS(t *testing.T, n, f int, owner cleisthenes.Member, memberList []cle
 		closeChan:        make(chan struct{}, 1),
 		dataReceiver:     cleisthenes.NewDataChannel(n),
 		binaryReceiver:   cleisthenes.NewBinaryChannel(n),
-		batchSender:      cleisthenes.NewBatchChannel(),
+		batchSender:      cleisthenes.NewBatchChannel(1),
 	}
 }
 

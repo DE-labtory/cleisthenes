@@ -148,7 +148,7 @@ func (n *Node) Address() cleisthenes.Address {
 
 func (n *Node) serveRequestFunc(msg cleisthenes.Message) {
 	senderAddr, _ := cleisthenes.ToAddress(msg.Sender)
-	sender := n.memberMap.Member(senderAddr)
+	sender, _ := n.memberMap.Member(senderAddr)
 	n.acs.HandleMessage(sender, msg.Message)
 }
 

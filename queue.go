@@ -75,6 +75,8 @@ func (q *MemTxQueue) Poll() (Transaction, error) {
 
 // len returns size of memQueue
 func (q *MemTxQueue) Len() int {
+	q.Lock()
+	defer q.Unlock()
 	return len(q.txs)
 }
 
@@ -97,10 +99,12 @@ func (q *MemTxQueue) Push(tx Transaction) {
 	q.txs = append(q.txs, tx)
 }
 
-type TxVerifyFunc func(Transaction) bool
+type TxValidator func(Transaction) bool
 
+// TxQueueManager manages transaction queue. It receive transaction from client
+// and TxQueueManager have its own policy to propose contribution to honeybadger
 type TxQueueManager interface {
-	AddTransaction(tx Transaction, fn TxVerifyFunc) error
+	AddTransaction(tx Transaction) error
 }
 
 type DefaultTxQueueManager struct {
@@ -109,32 +113,37 @@ type DefaultTxQueueManager struct {
 
 	stopFlag int32
 
-	batchSize int
-	blockSize int
+	contributionSize int
+	batchSize        int
 
 	closeChan chan struct{}
 
 	tryInterval time.Duration
+
+	txValidator TxValidator
 }
 
 func NewDefaultTxQueueManager(
 	txQueue TxQueue,
 	hb HoneyBadger,
+	contributionSize int,
 	batchSize int,
-	blockSize int,
 
 	// tryInterval is time interval to try create contribution
 	// then propose to honeybadger component
 	tryInterval time.Duration,
+
+	txVerifier TxValidator,
 ) *DefaultTxQueueManager {
 	m := &DefaultTxQueueManager{
-		txQueue:   txQueue,
-		hb:        hb,
-		batchSize: batchSize,
-		blockSize: blockSize,
+		txQueue:          txQueue,
+		hb:               hb,
+		contributionSize: contributionSize,
+		batchSize:        batchSize,
 
 		closeChan:   make(chan struct{}),
 		tryInterval: tryInterval,
+		txValidator: txVerifier,
 	}
 
 	go m.runContributionProposeRoutine()
@@ -142,8 +151,8 @@ func NewDefaultTxQueueManager(
 	return m
 }
 
-func (m *DefaultTxQueueManager) AddTransaction(tx Transaction, isValid TxVerifyFunc) error {
-	if !isValid(tx) {
+func (m *DefaultTxQueueManager) AddTransaction(tx Transaction) error {
+	if !m.txValidator(tx) {
 		return errors.New(fmt.Sprintf("error invalid transaction: %v", tx))
 	}
 	m.txQueue.Push(tx)
@@ -162,9 +171,13 @@ func (m *DefaultTxQueueManager) toDie() bool {
 	return atomic.LoadInt32(&(m.stopFlag)) == int32(1)
 }
 
+// runContributionProposeRoutine tries to propose contribution every its "tryInterval"
+// And if honeybadger is on consensus, it waits
 func (m *DefaultTxQueueManager) runContributionProposeRoutine() {
 	for !m.toDie() {
-		m.tryPropose()
+		if !m.hb.OnConsensus() {
+			m.tryPropose()
+		}
 		time.Sleep(m.tryInterval)
 	}
 }
@@ -172,34 +185,37 @@ func (m *DefaultTxQueueManager) runContributionProposeRoutine() {
 // tryPropose create contribution and send it to honeybadger only when
 // transaction queue size is larger than batch size
 func (m *DefaultTxQueueManager) tryPropose() error {
-	if m.txQueue.Len() < int(m.batchSize) {
+	if m.txQueue.Len() < int(m.contributionSize) {
 		return nil
 	}
 	contribution, err := m.createContribution()
 	if err != nil {
 		return err
 	}
-	return m.hb.HandleContribution(contribution)
+	m.hb.HandleContribution(contribution)
+	return nil
 }
 
 // Create batch polling random transaction in queue
+// One caution is that caller of this function should ensure transaction queue
+// size is larger than contribution size
 func (m *DefaultTxQueueManager) createContribution() (Contribution, error) {
-	candidate, err := m.loadCandidateTx(min(m.blockSize, m.txQueue.Len()))
+	candidate, err := m.loadCandidateTx(min(m.batchSize, m.txQueue.Len()))
 	if err != nil {
 		return Contribution{}, err
 	}
 
-	batch, cleanUp := m.selectRandomTx(candidate, m.batchSize)
-	defer cleanUp()
-
-	return Contribution{txList: batch}, nil
+	return Contribution{
+		TxList: m.selectRandomTx(candidate, m.contributionSize),
+	}, nil
 }
 
-// loadCandidateTx is a function that returns transactions from queue
-func (m *DefaultTxQueueManager) loadCandidateTx(candSize int) ([]Transaction, error) {
-	candidate := make([]Transaction, candSize)
+// loadCandidateTx is a function that returns candidate transactions which could be
+// included into contribution from the queue
+func (m *DefaultTxQueueManager) loadCandidateTx(candidateSize int) ([]Transaction, error) {
+	candidate := make([]Transaction, candidateSize)
 	var err error
-	for i := 0; i < candSize; i++ {
+	for i := 0; i < candidateSize; i++ {
 		candidate[i], err = m.txQueue.Poll()
 
 		if err != nil {
@@ -210,7 +226,7 @@ func (m *DefaultTxQueueManager) loadCandidateTx(candSize int) ([]Transaction, er
 }
 
 // selectRandomTx is a function that returns transactions which is randomly selected from input transactions
-func (m *DefaultTxQueueManager) selectRandomTx(candidate []Transaction, selectSize int) ([]Transaction, func()) {
+func (m *DefaultTxQueueManager) selectRandomTx(candidate []Transaction, selectSize int) []Transaction {
 	batch := make([]Transaction, selectSize)
 
 	for i := 0; i < selectSize; i++ {
@@ -220,11 +236,10 @@ func (m *DefaultTxQueueManager) selectRandomTx(candidate []Transaction, selectSi
 		batch[i] = candidate[idx]
 		candidate = append(candidate[:idx], candidate[idx+1:]...)
 	}
-	return batch, func() {
-		for _, item := range candidate {
-			m.txQueue.Push(item)
-		}
+	for _, leftover := range candidate {
+		m.txQueue.Push(leftover)
 	}
+	return batch
 }
 
 func min(x int, y int) int {

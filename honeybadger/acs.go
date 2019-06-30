@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/DE-labtory/cleisthenes/config"
+
+	"github.com/DE-labtory/cleisthenes/acs"
+
 	"github.com/DE-labtory/cleisthenes/pb"
 
 	"github.com/DE-labtory/cleisthenes"
@@ -33,7 +37,7 @@ func (r *acsRepository) save(epoch cleisthenes.Epoch, instance ACS) error {
 
 	_, ok := r.items[epoch]
 	if ok {
-		return errors.New(fmt.Sprintf("acs instance with epoch [%d]", epoch))
+		return errors.New(fmt.Sprintf("acs instance already exist with epoch [%d]", epoch))
 	}
 	r.items[epoch] = instance
 	return nil
@@ -44,9 +48,63 @@ func (r *acsRepository) find(epoch cleisthenes.Epoch) (ACS, bool) {
 	return result, ok
 }
 
-type acsFactory struct{}
+// ACSFactory helps create ACS instance easily. To create ACS, we need lots of DI
+// And for the ease of creating ACS, ACSFactory have components which is need to
+// create ACS
+type ACSFactory interface {
+	Create() (ACS, error)
+}
 
-func (f *acsFactory) create() (ACS, error) {
-	// TODO: create ACS instance
-	return nil, nil
+type DefaultACSFactory struct {
+	n              int
+	f              int
+	acsOwner       cleisthenes.Member
+	batchSender    cleisthenes.BatchSender
+	memberMap      cleisthenes.MemberMap
+	dataReceiver   cleisthenes.DataReceiver
+	dataSender     cleisthenes.DataSender
+	binaryReceiver cleisthenes.BinaryReceiver
+	binarySender   cleisthenes.BinarySender
+	broadcaster    cleisthenes.Broadcaster
+}
+
+func NewDefaultACSFactory(
+	n int,
+	f int,
+	acsOwner cleisthenes.Member,
+	memberMap cleisthenes.MemberMap,
+	dataReceiver cleisthenes.DataReceiver,
+	dataSender cleisthenes.DataSender,
+	binaryReceiver cleisthenes.BinaryReceiver,
+	binarySender cleisthenes.BinarySender,
+	batchSender cleisthenes.BatchSender,
+	broadcaster cleisthenes.Broadcaster,
+) *DefaultACSFactory {
+	return &DefaultACSFactory{
+		n:              n,
+		f:              f,
+		acsOwner:       acsOwner,
+		memberMap:      memberMap,
+		dataReceiver:   dataReceiver,
+		dataSender:     dataSender,
+		binaryReceiver: binaryReceiver,
+		binarySender:   binarySender,
+		batchSender:    batchSender,
+		broadcaster:    broadcaster,
+	}
+}
+
+func (f *DefaultACSFactory) Create() (ACS, error) {
+	return acs.New(
+		config.Get().HoneyBadger.NetworkSize,
+		config.Get().HoneyBadger.Byzantine,
+		f.acsOwner,
+		f.memberMap,
+		f.dataReceiver,
+		f.dataSender,
+		f.binaryReceiver,
+		f.binarySender,
+		f.batchSender,
+		f.broadcaster,
+	)
 }

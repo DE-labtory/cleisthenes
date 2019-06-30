@@ -21,7 +21,7 @@ func setNodeList(n, f int, nodeType []NodeType) []*Node {
 	for i := 0; i < n; i++ {
 		availablePort := util.GetAvailablePort(port)
 		owner := cleisthenes.NewMember(ip, availablePort)
-		batchChan := cleisthenes.NewBatchChannel()
+		batchChan := cleisthenes.NewBatchChannel(1)
 		batchChanList = append(batchChanList, batchChan)
 		node := NewNode(n, f, *owner, batchChan, nodeType[i])
 		node.Run()

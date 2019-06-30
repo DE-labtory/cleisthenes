@@ -6,7 +6,7 @@ import (
 )
 
 func TestBatchChannel_Send(t *testing.T) {
-	batchChan := NewBatchChannel()
+	batchChan := NewBatchChannel(1)
 
 	member := Member{Address: Address{Ip: "127.0.0.1", Port: 8080}}
 	batch := map[Member][]byte{
@@ -24,7 +24,7 @@ func TestBatchChannel_Send(t *testing.T) {
 }
 
 func TestBatchChannel_Receive(t *testing.T) {
-	batchChan := NewBatchChannel()
+	batchChan := NewBatchChannel(1)
 
 	member := Member{Address: Address{Ip: "127.0.0.1", Port: 8080}}
 	batch := map[Member][]byte{

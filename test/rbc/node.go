@@ -181,7 +181,7 @@ func (n *Node) serveRequestFunc(msg cleisthenes.Message) {
 	if err != nil {
 		iLogger.Fatalf(nil, "[HANDLER] invalid sender address : %s", msg.Sender)
 	}
-	sender := n.memberMap.Member(senderAddr)
+	sender, _ := n.memberMap.Member(senderAddr)
 
 	proposerAddr, err := cleisthenes.ToAddress(msg.Proposer)
 	if err != nil {

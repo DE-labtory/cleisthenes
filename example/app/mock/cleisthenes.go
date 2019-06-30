@@ -39,3 +39,7 @@ func (n *Node) Run() {
 	n.logger.Log("network_size", conf.HoneyBadger.NetworkSize)
 	n.logger.Log("byzantine_size", conf.HoneyBadger.Byzantine)
 }
+
+func (n *Node) Result() <-chan cleisthenes.ResultMessage {
+	return nil
+}
