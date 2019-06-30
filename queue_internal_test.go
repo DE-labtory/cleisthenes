@@ -17,15 +17,20 @@ var mockTxVerifier = func(Transaction) bool {
 }
 
 type MockHoneyBadger struct {
-	HandleContributionFunc func(contribution Contribution) error
+	HandleContributionFunc func(contribution Contribution)
 	HandleMessageFunc      func(msg *pb.Message) error
+	OnConsensusFunc        func() bool
 }
 
-func (hb *MockHoneyBadger) HandleContribution(contribution Contribution) error {
-	return hb.HandleContributionFunc(contribution)
+func (hb *MockHoneyBadger) HandleContribution(contribution Contribution) {
+	hb.HandleContributionFunc(contribution)
 }
 func (hb *MockHoneyBadger) HandleMessage(msg *pb.Message) error {
 	return nil
+}
+
+func (hb *MockHoneyBadger) OnConsensus() bool {
+	return hb.OnConsensusFunc()
 }
 
 func TestQueue_peek(t *testing.T) {
@@ -187,11 +192,11 @@ func TestDefaultTxQueueManager_AddTransactionAndProposeContribution(t *testing.T
 	nodeNum := 8
 
 	hb := &MockHoneyBadger{}
-	hb.HandleContributionFunc = func(contribution Contribution) error {
-		if len(contribution.TxList()) != len(inputs) {
-			t.Fatalf("expected contribution tx list is %d, but got %d", len(inputs), len(contribution.TxList()))
+	hb.HandleContributionFunc = func(contribution Contribution) {
+		if len(contribution.TxList) != len(inputs) {
+			t.Fatalf("expected contribution tx list is %d, but got %d", len(inputs), len(contribution.TxList))
 		}
-		for _, tx := range contribution.TxList() {
+		for _, tx := range contribution.TxList {
 			included := false
 
 			name := tx.(*mockTransaction).name
@@ -206,14 +211,23 @@ func TestDefaultTxQueueManager_AddTransactionAndProposeContribution(t *testing.T
 			}
 		}
 		wg.Done()
-		return nil
 	}
-	manager := NewDefaultTxQueueManager(NewTxQueue(), hb, batchSize, batchSize*nodeNum, time.Second)
+	hb.OnConsensusFunc = func() bool {
+		return false
+	}
+
+	txValidator := func(tx Transaction) bool { return true }
+	manager := NewDefaultTxQueueManager(
+		NewTxQueue(),
+		hb,
+		batchSize,
+		batchSize*nodeNum,
+		time.Second,
+		txValidator,
+	)
 
 	for _, input := range inputs {
-		manager.AddTransaction(input, func(transaction Transaction) bool {
-			return true
-		})
+		manager.AddTransaction(input)
 	}
 
 	wg.Wait()

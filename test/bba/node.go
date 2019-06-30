@@ -26,7 +26,8 @@ func normalNodeHandler(n *Node) func(msg cleisthenes.Message) {
 		if err != nil {
 			iLogger.Fatalf(nil, "[handler] failed to parse sender address: addr=%s", addr)
 		}
-		n.bba.HandleMessage(n.memberMap.Member(addr), bbaMessage)
+		m, _ := n.memberMap.Member(addr)
+		n.bba.HandleMessage(m, bbaMessage)
 	}
 }
 func lazyNodeHandler(n *Node) func(msg cleisthenes.Message) {
@@ -42,7 +43,8 @@ func lazyNodeHandler(n *Node) func(msg cleisthenes.Message) {
 		if err != nil {
 			iLogger.Fatalf(nil, "[handler] failed to parse sender address: addr=%s", addr)
 		}
-		n.bba.HandleMessage(n.memberMap.Member(addr), bbaMessage)
+		m, _ := n.memberMap.Member(addr)
+		n.bba.HandleMessage(m, bbaMessage)
 	}
 }
 

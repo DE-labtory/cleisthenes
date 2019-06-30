@@ -71,7 +71,7 @@ func TestEncrypt(t *testing.T) {
 	}
 }
 
-func TestNewTpke(t *testing.T) {
+func TestNewDefaultTpke(t *testing.T) {
 	keySet := Setup(Config{
 		threshold: 3, participant: 5,
 	})
@@ -94,14 +94,14 @@ func TestNewTpke(t *testing.T) {
 		t.Fatalf("public key set are different")
 	}
 
-	tpke0, err := NewTpke(5, skSet.KeyShareUsingString("0").Serialize(), pkSetSerial)
+	tpke0, err := NewDefaultTpke(5, skSet.KeyShareUsingString("0").Serialize(), pkSetSerial)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	tpke1, err := NewTpke(5, skSet.KeyShareUsingString("1").Serialize(), pkSetSerial)
-	tpke2, err := NewTpke(5, skSet.KeyShareUsingString("2").Serialize(), pkSetSerial)
-	tpke3, err := NewTpke(5, skSet.KeyShareUsingString("3").Serialize(), pkSetSerial)
-	tpke4, err := NewTpke(5, skSet.KeyShareUsingString("4").Serialize(), pkSetSerial)
+	tpke1, err := NewDefaultTpke(5, skSet.KeyShareUsingString("1").Serialize(), pkSetSerial)
+	tpke2, err := NewDefaultTpke(5, skSet.KeyShareUsingString("2").Serialize(), pkSetSerial)
+	tpke3, err := NewDefaultTpke(5, skSet.KeyShareUsingString("3").Serialize(), pkSetSerial)
+	tpke4, err := NewDefaultTpke(5, skSet.KeyShareUsingString("4").Serialize(), pkSetSerial)
 
 	msg := []byte("DE-labtory")
 	cipher0, err := tpke0.Encrypt(msg)

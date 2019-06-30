@@ -65,7 +65,10 @@ func TestMemberMap_Member(t *testing.T) {
 	memberMap := NewMemberMap()
 	memberMap.members[addr] = newDummyMember(addr)
 
-	member := memberMap.Member(addr)
+	member, ok := memberMap.Member(addr)
+	if !ok {
+		t.Fatalf("expect member to exist")
+	}
 	if !reflect.DeepEqual(member, *newDummyMember(addr)) {
 		t.Fatalf("two member are not equal. got=%v+x, expected=%v+x", memberMap.members[addr], *newDummyMember(addr))
 	}

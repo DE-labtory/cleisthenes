@@ -60,6 +60,7 @@ type ACS struct {
 }
 
 // TODO : the coin generator must be injected outside the ACS, BBA should has it's own coin generator.
+// TODO : if we consider dynamic network, change MemberMap into pointer
 func New(
 	n int,
 	f int,
@@ -70,7 +71,8 @@ func New(
 	binaryReceiver cleisthenes.BinaryReceiver,
 	binarySender cleisthenes.BinarySender,
 	batchSender cleisthenes.BatchSender,
-	broadCaster cleisthenes.Broadcaster) (*ACS, error) {
+	broadCaster cleisthenes.Broadcaster,
+) (*ACS, error) {
 
 	acs := &ACS{
 		n:                n,
@@ -124,7 +126,10 @@ func (acs *ACS) HandleMessage(sender cleisthenes.Member, msg *pb.Message) error 
 	if err != nil {
 		return err
 	}
-	proposer := acs.memberMap.Member(proposerAddr)
+	proposer, ok := acs.memberMap.Member(proposerAddr)
+	if !ok {
+		return ErrNoMemberMatchingRequest
+	}
 	req := request{
 		proposer: proposer,
 		sender:   sender,

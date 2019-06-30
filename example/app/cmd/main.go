@@ -43,5 +43,4 @@ func main() {
 	if err := http.ListenAndServe(address, app.NewApiHandler(node, httpLogger)); err != nil {
 		httpLogger.Log("message", fmt.Sprintf("http server closed: %s", err))
 	}
-
 }

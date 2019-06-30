@@ -5,7 +5,7 @@ type Transaction interface{}
 // TODO: should be removed, after ACS merged
 // TODO: ACS should use BatchMessage instead
 type Batch struct {
-	// txList is a transaction set of batch which is polled from queue
+	// TxList is a transaction set of batch which is polled from queue
 	txList []Transaction
 }
 
@@ -15,9 +15,5 @@ func (batch *Batch) TxList() []Transaction {
 }
 
 type Contribution struct {
-	txList []Transaction
-}
-
-func (c *Contribution) TxList() []Transaction {
-	return c.txList
+	TxList []Transaction
 }

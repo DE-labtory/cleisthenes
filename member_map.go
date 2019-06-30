@@ -42,6 +42,12 @@ func NewMember(host string, port uint16) *Member {
 	}
 }
 
+func NewMemberWithAddress(addr Address) *Member {
+	return &Member{
+		Address: addr,
+	}
+}
+
 // MemberMap manages members information
 type MemberMap struct {
 	lock    sync.RWMutex
@@ -68,12 +74,12 @@ func (m *MemberMap) Members() []Member {
 	return members
 }
 
-// TODO: change return type Member -> (Member, bool)
-func (m *MemberMap) Member(addr Address) Member {
+func (m *MemberMap) Member(addr Address) (Member, bool) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
-	return *m.members[addr]
+	member, ok := m.members[addr]
+	return *member, ok
 }
 
 func (m *MemberMap) Add(member *Member) {
