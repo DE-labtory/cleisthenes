@@ -113,41 +113,54 @@ func (r *auxReqRepository) FindAll() []cleisthenes.Request {
 
 type incomingRequestRepository interface {
 	Save(round uint64, addr cleisthenes.Address, req cleisthenes.Request)
-	Find(round uint64) map[cleisthenes.Address][]cleisthenes.Request
+	Find(round uint64) []*incomingRequest
 }
 
 // incomingReqRepsoitory saves incoming messages sent from a node that is already
 // in a later epoch. These request will be saved and handled in the next epoch.
+
+type incomingRequest struct {
+	round uint64
+	addr  cleisthenes.Address
+	req   cleisthenes.Request
+}
+
+func newIncomingRequest(round uint64, addr cleisthenes.Address, req cleisthenes.Request) *incomingRequest {
+	return &incomingRequest{
+		round: round,
+		addr:  addr,
+		req:   req,
+	}
+}
+
 type defaultIncomingReqRepository struct {
 	lock   sync.RWMutex
-	reqMap map[uint64]map[cleisthenes.Address][]cleisthenes.Request
+	reqMap []*incomingRequest
 }
 
 func newDefaultIncomingRequestRepository() *defaultIncomingReqRepository {
 	return &defaultIncomingReqRepository{
 		lock:   sync.RWMutex{},
-		reqMap: make(map[uint64]map[cleisthenes.Address][]cleisthenes.Request),
+		reqMap: make([]*incomingRequest, 0),
 	}
 }
 
 func (r *defaultIncomingReqRepository) Save(round uint64, addr cleisthenes.Address, req cleisthenes.Request) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
-
-	if r.reqMap[round][addr] == nil {
-		r.reqMap[round] = make(map[cleisthenes.Address][]cleisthenes.Request)
-		r.reqMap[round][addr] = make([]cleisthenes.Request, 0)
-	}
-	r.reqMap[round][addr] = append(r.reqMap[round][addr], req)
+	r.reqMap = append(r.reqMap, newIncomingRequest(round, addr, req))
 }
 
-func (r *defaultIncomingReqRepository) Find(round uint64) map[cleisthenes.Address][]cleisthenes.Request {
+func (r *defaultIncomingReqRepository) Find(round uint64) []*incomingRequest {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
-	result, ok := r.reqMap[round]
-	if !ok {
-		return map[cleisthenes.Address][]cleisthenes.Request{}
+	result := make([]*incomingRequest, 0)
+	for _, ir := range r.reqMap {
+		if ir.round != round {
+			continue
+		}
+		result = append(result, ir)
 	}
 	return result
 }

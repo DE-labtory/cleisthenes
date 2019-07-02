@@ -52,11 +52,12 @@ type output struct {
 	value cleisthenes.Binary
 }
 
-func runNode(t *testing.T, n, f int, coinGeneratorList []cleisthenes.CoinGenerator) []*bba.Node {
+func runNode(t *testing.T, typList []bba.NodeType, n, f int, coinGeneratorList []cleisthenes.CoinGenerator) []*bba.Node {
 	nodeList := make([]*bba.Node, 0)
 	for i := 0; i < n; i++ {
 		port := util.GetAvailablePort(8000)
 		node, err := bba.New(
+			typList[i],
 			n,
 			f,
 			coinGeneratorList[i],
@@ -113,7 +114,46 @@ func TestBBA_WithoutByzantine(t *testing.T) {
 		mock.NewCoinGenerator(cleisthenes.Coin(cleisthenes.One)),
 	}
 
-	nodeList := runNode(t, n, f, coinGeneratorList)
+	nodeList := runNode(t,
+		[]bba.NodeType{
+			bba.Normal,
+			bba.Normal,
+			bba.Normal,
+			bba.Normal,
+		}, n, f, coinGeneratorList)
+
+	connectNode(t, nodeList)
+
+	proposeBinary(t, nodeList, binList)
+
+	result := watchResult(nodeList)
+
+	assertResult(t, result, cleisthenes.One)
+}
+
+func TestBBA_WhenEstimateIsDifferentWithCoin_ThenExecuteOneMoreRound(t *testing.T) {
+	n := 4
+	f := 1
+
+	binList := []cleisthenes.Binary{
+		cleisthenes.One,
+		cleisthenes.One,
+		cleisthenes.One,
+		cleisthenes.One,
+	}
+	coinGeneratorList := []cleisthenes.CoinGenerator{
+		mock.NewCoinGenerator(cleisthenes.Coin(cleisthenes.Zero)),
+		mock.NewCoinGenerator(cleisthenes.Coin(cleisthenes.Zero)),
+		mock.NewCoinGenerator(cleisthenes.Coin(cleisthenes.Zero)),
+		mock.NewCoinGenerator(cleisthenes.Coin(cleisthenes.Zero)),
+	}
+
+	nodeList := runNode(t, []bba.NodeType{
+		bba.Normal,
+		bba.Normal,
+		bba.Normal,
+		bba.Lazy,
+	}, n, f, coinGeneratorList)
 
 	connectNode(t, nodeList)
 
@@ -153,7 +193,69 @@ func TestBBA_WithByzantine(t *testing.T) {
 		mock.NewCoinGenerator(cleisthenes.Coin(cleisthenes.One)),
 	}
 
-	nodeList := runNode(t, n, f, coinGeneratorList)
+	nodeList := runNode(t, []bba.NodeType{
+		bba.Normal,
+		bba.Normal,
+		bba.Normal,
+		bba.Normal,
+		bba.Normal,
+		bba.Normal,
+		bba.Normal,
+		bba.Normal,
+		bba.Normal,
+		bba.Normal,
+	}, n, f, coinGeneratorList)
+
+	connectNode(t, nodeList)
+
+	proposeBinary(t, nodeList, binList)
+
+	result := watchResult(nodeList)
+
+	assertResult(t, result, cleisthenes.One)
+}
+
+func TestBBA_WithByzantine_WhenEstimateIsDifferentWithCoin_ThenExecuteOneMoreRound(t *testing.T) {
+	n := 10
+	f := 3
+
+	binList := []cleisthenes.Binary{
+		cleisthenes.One,
+		cleisthenes.One,
+		cleisthenes.One,
+		cleisthenes.One,
+		cleisthenes.One,
+		cleisthenes.One,
+		cleisthenes.One,
+		cleisthenes.Zero,
+		cleisthenes.Zero,
+		cleisthenes.Zero,
+	}
+	coinGeneratorList := []cleisthenes.CoinGenerator{
+		mock.NewCoinGenerator(cleisthenes.Coin(cleisthenes.Zero)),
+		mock.NewCoinGenerator(cleisthenes.Coin(cleisthenes.Zero)),
+		mock.NewCoinGenerator(cleisthenes.Coin(cleisthenes.Zero)),
+		mock.NewCoinGenerator(cleisthenes.Coin(cleisthenes.Zero)),
+		mock.NewCoinGenerator(cleisthenes.Coin(cleisthenes.Zero)),
+		mock.NewCoinGenerator(cleisthenes.Coin(cleisthenes.Zero)),
+		mock.NewCoinGenerator(cleisthenes.Coin(cleisthenes.Zero)),
+		mock.NewCoinGenerator(cleisthenes.Coin(cleisthenes.Zero)),
+		mock.NewCoinGenerator(cleisthenes.Coin(cleisthenes.Zero)),
+		mock.NewCoinGenerator(cleisthenes.Coin(cleisthenes.Zero)),
+	}
+
+	nodeList := runNode(t, []bba.NodeType{
+		bba.Lazy,
+		bba.Lazy,
+		bba.Normal,
+		bba.Normal,
+		bba.Normal,
+		bba.Normal,
+		bba.Normal,
+		bba.Normal,
+		bba.Normal,
+		bba.Lazy,
+	}, n, f, coinGeneratorList)
 
 	connectNode(t, nodeList)
 
@@ -185,7 +287,15 @@ func watchResult(nodeList []*bba.Node) *simulationResult {
 			node.Trace()
 		}
 
-		if len(simulationResult.outputList) == len(nodeList) {
+		iLogger.Info(nil, "====================on progress...================")
+		result := make([]cleisthenes.Binary, 0)
+		for _, node := range nodeList {
+			val, ok := node.Result()
+			result = append(result, val)
+			iLogger.Infof(nil, "undefined: %v, value: %v", ok, val)
+		}
+
+		if len(simulationResult.outputList) == len(nodeList) || allResultEqual(result) {
 			break
 		}
 	}
@@ -194,6 +304,19 @@ func watchResult(nodeList []*bba.Node) *simulationResult {
 	simulationResult.print()
 
 	return simulationResult
+}
+
+func allResultEqual(binList []cleisthenes.Binary) bool {
+	if len(binList) == 0 {
+		return false
+	}
+	target := binList[0]
+	for _, bin := range binList {
+		if target != bin {
+			return false
+		}
+	}
+	return true
 }
 
 func assertResult(t *testing.T, result *simulationResult, expected cleisthenes.Binary) {

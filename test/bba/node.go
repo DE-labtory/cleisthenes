@@ -1,11 +1,50 @@
 package bba
 
 import (
+	"time"
+
 	"github.com/DE-labtory/cleisthenes"
 	engine "github.com/DE-labtory/cleisthenes/bba"
 	"github.com/DE-labtory/cleisthenes/pb"
 	"github.com/DE-labtory/iLogger"
 )
+
+type NodeType string
+
+const (
+	Normal = "normal"
+	Lazy   = "lazy"
+)
+
+func normalNodeHandler(n *Node) func(msg cleisthenes.Message) {
+	return func(msg cleisthenes.Message) {
+		bbaMessage, ok := msg.Message.Payload.(*pb.Message_Bba)
+		if !ok {
+			iLogger.Fatalf(nil, "[handler] received message is not Message_Bba type")
+		}
+		addr, err := cleisthenes.ToAddress(msg.Sender)
+		if err != nil {
+			iLogger.Fatalf(nil, "[handler] failed to parse sender address: addr=%s", addr)
+		}
+		n.bba.HandleMessage(n.memberMap.Member(addr), bbaMessage)
+	}
+}
+func lazyNodeHandler(n *Node) func(msg cleisthenes.Message) {
+	return func(msg cleisthenes.Message) {
+		// lazy node sleep 2 seconds
+		time.Sleep(2000)
+
+		bbaMessage, ok := msg.Message.Payload.(*pb.Message_Bba)
+		if !ok {
+			iLogger.Fatalf(nil, "[handler] received message is not Message_Bba type")
+		}
+		addr, err := cleisthenes.ToAddress(msg.Sender)
+		if err != nil {
+			iLogger.Fatalf(nil, "[handler] failed to parse sender address: addr=%s", addr)
+		}
+		n.bba.HandleMessage(n.memberMap.Member(addr), bbaMessage)
+	}
+}
 
 type handler struct {
 	handleFunc func(msg cleisthenes.Message)
@@ -22,6 +61,7 @@ func (h *handler) ServeRequest(msg cleisthenes.Message) {
 }
 
 type Node struct {
+	typ       NodeType
 	addr      cleisthenes.Address
 	bba       *engine.BBA
 	server    *cleisthenes.GrpcServer
@@ -30,13 +70,14 @@ type Node struct {
 	memberMap *cleisthenes.MemberMap
 }
 
-func New(n, f int, coinGenerator cleisthenes.CoinGenerator, addr cleisthenes.Address) (*Node, error) {
+func New(typ NodeType, n, f int, coinGenerator cleisthenes.CoinGenerator, addr cleisthenes.Address) (*Node, error) {
 	member := &cleisthenes.Member{Address: addr}
 	connPool := cleisthenes.NewConnectionPool()
 	memberMap := cleisthenes.NewMemberMap()
 	binChan := cleisthenes.NewBinaryChannel(n)
 	bba := engine.New(n, f, *member, cleisthenes.Member{}, connPool, coinGenerator, binChan)
 	return &Node{
+		typ:       typ,
 		addr:      addr,
 		bba:       bba,
 		server:    cleisthenes.NewServer(addr),
@@ -47,20 +88,16 @@ func New(n, f int, coinGenerator cleisthenes.CoinGenerator, addr cleisthenes.Add
 }
 
 func (n *Node) Run() {
-	handler := newHandler(func(msg cleisthenes.Message) {
-		bbaMessage, ok := msg.Message.Payload.(*pb.Message_Bba)
-		if !ok {
-			iLogger.Fatalf(nil, "[handler] received message is not Message_Bba type")
-		}
-		addr, err := cleisthenes.ToAddress(msg.Sender)
-		if err != nil {
-			iLogger.Fatalf(nil, "[handler] failed to parse sender address: addr=%s", addr)
-		}
-		n.bba.HandleMessage(n.memberMap.Member(addr), bbaMessage)
-	})
+	var handlerFunc func(message cleisthenes.Message)
+	switch n.typ {
+	case Normal:
+		handlerFunc = normalNodeHandler(n)
+	case Lazy:
+		handlerFunc = lazyNodeHandler(n)
+	}
+	handler := newHandler(handlerFunc)
 
 	n.server.OnConn(func(conn cleisthenes.Connection) {
-		iLogger.Infof(nil, "server: on connection, from: %s", n.Info())
 		conn.Handle(handler)
 
 		if err := conn.Start(); err != nil {
