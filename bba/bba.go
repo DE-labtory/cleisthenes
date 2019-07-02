@@ -3,6 +3,7 @@ package bba
 import (
 	"encoding/json"
 	"errors"
+	"reflect"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -21,6 +22,30 @@ type request struct {
 	err    chan error
 }
 
+type round struct {
+	lock sync.RWMutex
+	val  uint64
+}
+
+func newRound() *round {
+	return &round{
+		lock: sync.RWMutex{},
+		val:  1,
+	}
+}
+
+func (r *round) inc() {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	r.val++
+}
+
+func (r *round) get() uint64 {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	return r.val
+}
+
 type BBA struct {
 	*sync.RWMutex
 	cleisthenes.Tracer
@@ -36,7 +61,7 @@ type BBA struct {
 	// done is flag whether BBA is terminated or not
 	done *cleisthenes.BinaryState
 	// round is value for current Binary Byzantine Agreement round
-	round       uint64
+	round       *round
 	binValueSet *binarySet
 	// broadcastedBvalSet is set of bval value instance has sent
 	broadcastedBvalSet *binarySet
@@ -73,7 +98,7 @@ func New(
 		proposer: proposer,
 		n:        n,
 		f:        f,
-		round:    1,
+		round:    newRound(),
 
 		binValueSet:        newBinarySet(),
 		broadcastedBvalSet: newBinarySet(),
@@ -88,8 +113,12 @@ func New(
 		auxRepo:         newAuxReqRepository(),
 		incomingReqRepo: newDefaultIncomingRequestRepository(),
 
-		closeChan:           make(chan struct{}, 1),
-		reqChan:             make(chan request, n),
+		closeChan: make(chan struct{}, 1),
+
+		// request channel size as n*8, because each node can have maximum 4 rounds
+		// and in each round each node can broadcast at most twice (broadcast BVAL, AUX)
+		// so each node should handle 8 requests per node.
+		reqChan:             make(chan request, n*8),
 		binValueChan:        make(chan struct{}, n),
 		tryoutAgreementChan: make(chan struct{}, n),
 		advanceRoundChan:    make(chan struct{}, n),
@@ -107,27 +136,30 @@ func New(
 // HandleInput will set the given val as the initial value to be proposed in the
 // Agreement
 func (bba *BBA) HandleInput(bvalRequest *BvalRequest) error {
+	bba.Log("action", "handleInput")
 	bba.est.Set(bvalRequest.Value)
 
 	req := request{
 		sender: bba.owner,
 		data:   bvalRequest,
-		round:  bba.round,
+		round:  bba.round.get(),
 		err:    make(chan error),
 	}
 	if err := bba.broadcast(bvalRequest); err != nil {
 		return err
 	}
 	bba.reqChan <- req
-	return <-req.err
+
+	return nil
 }
 
 // HandleMessage will process the given rpc message.
 func (bba *BBA) HandleMessage(sender cleisthenes.Member, msg *pb.Message_Bba) error {
-	req, round, err := processMessage(msg)
+	req, round, err := bba.processMessage(msg)
 	if err != nil {
 		return err
 	}
+
 	r := request{
 		sender: sender,
 		data:   req,
@@ -135,7 +167,7 @@ func (bba *BBA) HandleMessage(sender cleisthenes.Member, msg *pb.Message_Bba) er
 		err:    make(chan error),
 	}
 	bba.reqChan <- r
-	return <-r.err
+	return nil
 }
 
 func (bba *BBA) Result() (cleisthenes.Binary, bool) {
@@ -156,10 +188,26 @@ func (bba *BBA) Trace() {
 }
 
 func (bba *BBA) muxMessage(sender cleisthenes.Member, round uint64, req cleisthenes.Request) error {
-	if round < bba.round {
+	if round < bba.round.get() {
+		bba.Log(
+			"action", "muxMessage",
+			"message", "request from old round, abandon",
+			"sender", sender.Address.String(),
+			"type", reflect.TypeOf(req).String(),
+			"req.round", strconv.FormatUint(round, 10),
+			"my.round", strconv.FormatUint(bba.round.get(), 10),
+		)
 		return nil
 	}
-	if round > bba.round {
+	if round > bba.round.get() {
+		bba.Log(
+			"action", "muxMessage",
+			"message", "request from future round, keep it",
+			"sender", sender.Address.String(),
+			"type", reflect.TypeOf(req).String(),
+			"req.round", strconv.FormatUint(round, 10),
+			"my.round", strconv.FormatUint(bba.round.get(), 10),
+		)
 		bba.incomingReqRepo.Save(round, sender.Address, req)
 		return nil
 	}
@@ -180,7 +228,7 @@ func (bba *BBA) handleBvalRequest(sender cleisthenes.Member, bval *BvalRequest) 
 	}
 
 	count := bba.countBvalByValue(bval.Value)
-	bba.Log("action", "handleBval", "count", strconv.Itoa(count))
+	bba.Log("action", "handleBval", "from", sender.Address.String(), "count", strconv.Itoa(count))
 	if count == bba.binValueSetThreshold() {
 		bba.Log("action", "binValueSet", "count", strconv.Itoa(count))
 		bba.binValueSet.union(bval.Value)
@@ -221,12 +269,12 @@ func (bba *BBA) tryoutAgreement() {
 		return
 	}
 	if len(binList) > 1 {
-		bba.Log("bin value set size is larger than one")
+		bba.Log("err", "bin value set size is larger than one")
 		bba.agreementFailed(cleisthenes.Binary(coin))
 		return
 	}
 	if binList[0] != cleisthenes.Binary(coin) {
-		bba.Log("bin value set value is different with coin value")
+		bba.Log("err", "bin value set value is different with coin value")
 		bba.agreementFailed(binList[0])
 		return
 	}
@@ -242,9 +290,14 @@ func (bba *BBA) agreementSuccess(decValue cleisthenes.Binary) {
 	bba.dec.Set(decValue)
 	bba.done.Set(true)
 	bba.binInputChan.Send(cleisthenes.BinaryMessage{
-		Member: bba.owner,
+		Member: bba.proposer,
 		Binary: bba.dec.Value(),
 	})
+	bba.Log(
+		"action", "agreementSucess",
+		"message", "<agreement finish>",
+		"my.round", strconv.FormatUint(bba.round.get(), 10),
+	)
 	bba.advanceRoundChan <- struct{}{}
 }
 
@@ -255,42 +308,46 @@ func (bba *BBA) advanceRound() {
 
 	bba.binValueSet = newBinarySet()
 	bba.broadcastedBvalSet = newBinarySet()
+	bba.auxBroadcasted = cleisthenes.NewBinaryState()
 
-	bba.round++
+	bba.round.inc()
 
-	bba.handleDelayedRequest(bba.round)
+	bba.handleDelayedRequest()
 
-	if err := bba.HandleInput(&BvalRequest{
+	bba.HandleInput(&BvalRequest{
 		Value: bba.est.Value(),
-	}); err != nil {
-		bba.Log("failed to handle input")
-	}
+	})
 }
 
-func (bba *BBA) handleDelayedRequest(round uint64) {
-	delayedReqMap := bba.incomingReqRepo.Find(bba.round)
-	for addr, reqList := range delayedReqMap {
-		for _, req := range reqList {
-			r := request{
-				sender: cleisthenes.Member{Address: addr},
-				data:   req,
-				round:  bba.round,
-				err:    make(chan error),
-			}
-			bba.reqChan <- r
-			if err := <-r.err; err != nil {
-				bba.Log("action", "handleDelayedRequest", "err", err.Error())
-			}
+func (bba *BBA) handleDelayedRequest() {
+	delayedReqMap := bba.incomingReqRepo.Find(bba.round.get())
+	for _, ir := range delayedReqMap {
+		if ir.round != bba.round.get() {
+			continue
 		}
+		bba.Log(
+			"action", "handleDelayedRequest",
+			"round", strconv.FormatUint(ir.round, 10),
+			"size", strconv.Itoa(len(delayedReqMap)),
+			"addr", ir.addr.String(),
+			"type", reflect.TypeOf(ir.req).String(),
+		)
+		r := request{
+			sender: cleisthenes.Member{Address: ir.addr},
+			data:   ir.req,
+			round:  ir.round,
+			err:    make(chan error),
+		}
+		bba.reqChan <- r
 	}
-	bba.Log("action", "handleDelayedRequest")
+	bba.Log("action", "handleDelayedRequest", "message", "done")
 }
 
 func (bba *BBA) broadcastAuxOnceForRound() {
 	if bba.auxBroadcasted.Value() == true {
 		return
 	}
-	bba.Log("action", "broadcastAux", "from", bba.owner.Address.String())
+	bba.Log("action", "broadcastAux", "from", bba.owner.Address.String(), "round", strconv.FormatUint(bba.round.get(), 10))
 	for _, bin := range bba.binValueSet.toList() {
 		if err := bba.broadcast(&AuxRequest{
 			Value: bin,
@@ -315,18 +372,23 @@ func (bba *BBA) broadcast(req cleisthenes.Request) error {
 	if err != nil {
 		return err
 	}
-	bba.broadcaster.ShareMessage(pb.Message{
+
+	bbaMsg := &pb.Message_Bba{
+		Bba: &pb.BBA{
+			Round:   bba.round.get(),
+			Type:    typ,
+			Payload: payload,
+		},
+	}
+	broadcastMsg := pb.Message{
 		Proposer:  bba.proposer.Address.String(),
 		Sender:    bba.owner.Address.String(),
 		Timestamp: ptypes.TimestampNow(),
-		Payload: &pb.Message_Bba{
-			Bba: &pb.BBA{
-				Round:   bba.round,
-				Type:    typ,
-				Payload: payload,
-			},
-		},
-	})
+		Payload:   bbaMsg,
+	}
+
+	bba.HandleMessage(bba.owner, bbaMsg)
+	bba.broadcaster.ShareMessage(broadcastMsg)
 	return nil
 }
 
@@ -340,7 +402,7 @@ func (bba *BBA) run() {
 		case <-bba.closeChan:
 			bba.closeChan <- struct{}{}
 		case req := <-bba.reqChan:
-			req.err <- bba.muxMessage(req.sender, req.round, req.data)
+			bba.muxMessage(req.sender, req.round, req.data)
 		case <-bba.binValueChan:
 			bba.broadcastAuxOnceForRound()
 		case <-bba.tryoutAgreementChan:
@@ -423,18 +485,18 @@ func (bba *BBA) tryoutAgreementThreshold() int {
 	return bba.n - bba.f
 }
 
-func processMessage(msg *pb.Message_Bba) (cleisthenes.Request, uint64, error) {
+func (bba *BBA) processMessage(msg *pb.Message_Bba) (cleisthenes.Request, uint64, error) {
 	switch msg.Bba.Type {
 	case pb.BBA_BVAL:
-		return processBvalMessage(msg)
+		return bba.processBvalMessage(msg)
 	case pb.BBA_AUX:
-		return processAuxMessage(msg)
+		return bba.processAuxMessage(msg)
 	default:
 		return nil, 0, errors.New("error processing message with invalid type")
 	}
 }
 
-func processBvalMessage(msg *pb.Message_Bba) (cleisthenes.Request, uint64, error) {
+func (bba *BBA) processBvalMessage(msg *pb.Message_Bba) (cleisthenes.Request, uint64, error) {
 	req := &BvalRequest{}
 	if err := json.Unmarshal(msg.Bba.Payload, req); err != nil {
 		return nil, 0, err
@@ -442,7 +504,7 @@ func processBvalMessage(msg *pb.Message_Bba) (cleisthenes.Request, uint64, error
 	return req, msg.Bba.Round, nil
 }
 
-func processAuxMessage(msg *pb.Message_Bba) (cleisthenes.Request, uint64, error) {
+func (bba *BBA) processAuxMessage(msg *pb.Message_Bba) (cleisthenes.Request, uint64, error) {
 	req := &AuxRequest{}
 	if err := json.Unmarshal(msg.Bba.Payload, req); err != nil {
 		return nil, 0, err

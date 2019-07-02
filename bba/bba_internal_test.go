@@ -100,6 +100,8 @@ func setupHandleBvalRequestTest(t *testing.T, bvalList []*BvalRequest) (*BBA, *m
 		auxRepo:            newAuxReqRepository(),
 		binValueSet:        newBinarySet(),
 		broadcastedBvalSet: newBinarySet(),
+		round:              newRound(),
+		reqChan:            make(chan request),
 
 		binValueChan:  make(chan struct{}, 10),
 		Tracer:        cleisthenes.NewMemCacheTracer(),
@@ -127,6 +129,10 @@ func TestBBA_HandleBvalRequest(t *testing.T) {
 		<-bbaInstance.binValueChan
 		teardown()
 		done <- struct{}{}
+	}()
+
+	go func() {
+		<-bbaInstance.reqChan
 	}()
 
 	tester.setupAssert(3, func(t *testing.T, bbaInstance *BBA) {
@@ -205,6 +211,13 @@ func TestBBA_HandleBvalRequest_OneZeroCombined(t *testing.T) {
 		}
 
 		teardown()
+	}()
+	go func() {
+		for {
+			select {
+			case <-bbaInstance.reqChan:
+			}
+		}
 	}()
 
 	// when receive 6 bval request
@@ -442,6 +455,7 @@ func tryoutAgreementTestSetup() (*BBA, *bbaTester, func()) {
 		done:                cleisthenes.NewBinaryState(),
 		est:                 cleisthenes.NewBinaryState(),
 		dec:                 cleisthenes.NewBinaryState(),
+		round:               newRound(),
 		tryoutAgreementChan: make(chan struct{}, 10),
 		advanceRoundChan:    make(chan struct{}, 10),
 		Tracer:              cleisthenes.NewMemCacheTracer(),
