@@ -161,6 +161,8 @@ func (r *defaultIncomingReqRepository) Find(round uint64) []*incomingRequest {
 			continue
 		}
 		result = append(result, ir)
+
 	}
+
 	return result
 }
