@@ -8,6 +8,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/DE-labtory/cleisthenes/test/mock"
+
 	"github.com/golang/protobuf/ptypes"
 
 	"github.com/DE-labtory/cleisthenes/pb"
@@ -40,14 +42,14 @@ func (r *round) inc() {
 	r.val++
 }
 
-func (r *round) get() uint64 {
+func (r *round) value() uint64 {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 	return r.val
 }
 
 type BBA struct {
-	*sync.RWMutex
+	sync.RWMutex
 	cleisthenes.Tracer
 
 	owner    cleisthenes.Member
@@ -69,15 +71,16 @@ type BBA struct {
 	est, dec       *cleisthenes.BinaryState
 	auxBroadcasted *cleisthenes.BinaryState
 
-	bvalRepo        cleisthenes.RequestRepository
-	auxRepo         cleisthenes.RequestRepository
-	incomingReqRepo incomingRequestRepository
+	bvalRepo            cleisthenes.RequestRepository
+	auxRepo             cleisthenes.RequestRepository
+	incomingBvalReqRepo incomingRequestRepository
+	incomingAuxReqRepo  incomingRequestRepository
 
 	reqChan             chan request
 	closeChan           chan struct{}
-	binValueChan        chan struct{}
-	tryoutAgreementChan chan struct{}
-	advanceRoundChan    chan struct{}
+	binValueChan        chan uint64
+	tryoutAgreementChan chan uint64
+	advanceRoundChan    chan uint64
 
 	broadcaster   cleisthenes.Broadcaster
 	coinGenerator cleisthenes.CoinGenerator
@@ -90,7 +93,6 @@ func New(
 	owner cleisthenes.Member,
 	proposer cleisthenes.Member,
 	broadcaster cleisthenes.Broadcaster,
-	coinGenerator cleisthenes.CoinGenerator,
 	binInputChan cleisthenes.BinarySender,
 ) *BBA {
 	instance := &BBA{
@@ -109,26 +111,29 @@ func New(
 
 		auxBroadcasted: cleisthenes.NewBinaryState(),
 
-		bvalRepo:        newBvalReqRepository(),
-		auxRepo:         newAuxReqRepository(),
-		incomingReqRepo: newDefaultIncomingRequestRepository(),
+		bvalRepo:            newBvalReqRepository(),
+		auxRepo:             newAuxReqRepository(),
+		incomingBvalReqRepo: newDefaultIncomingRequestRepository(),
+		incomingAuxReqRepo:  newDefaultIncomingRequestRepository(),
 
 		closeChan: make(chan struct{}, 1),
 
 		// request channel size as n*8, because each node can have maximum 4 rounds
 		// and in each round each node can broadcast at most twice (broadcast BVAL, AUX)
 		// so each node should handle 8 requests per node.
-		reqChan:             make(chan request, n*8),
-		binValueChan:        make(chan struct{}, n),
-		tryoutAgreementChan: make(chan struct{}, n),
-		advanceRoundChan:    make(chan struct{}, n),
+		reqChan: make(chan request, n*8),
+		// below channel size as n*4, because each node can have maximum 4 rounds
+		binValueChan:        make(chan uint64, n*4),
+		tryoutAgreementChan: make(chan uint64, n*4),
+		advanceRoundChan:    make(chan uint64, n*4),
 
 		broadcaster:   broadcaster,
-		coinGenerator: coinGenerator,
+		coinGenerator: mock.NewCoinGenerator(cleisthenes.Coin(cleisthenes.One)),
 		binInputChan:  binInputChan,
 
 		Tracer: cleisthenes.NewMemCacheTracer(),
 	}
+
 	go instance.run()
 	return instance
 }
@@ -142,7 +147,7 @@ func (bba *BBA) HandleInput(bvalRequest *BvalRequest) error {
 	req := request{
 		sender: bba.owner,
 		data:   bvalRequest,
-		round:  bba.round.get(),
+		round:  bba.round.value(),
 		err:    make(chan error),
 	}
 	if err := bba.broadcast(bvalRequest); err != nil {
@@ -174,6 +179,10 @@ func (bba *BBA) Result() (cleisthenes.Binary, bool) {
 	return bba.dec.Value(), bba.dec.Undefined()
 }
 
+func (bba *BBA) Idle() bool {
+	return bba.round.value() == 1 && bba.est.Undefined()
+}
+
 func (bba *BBA) Close() {
 	if first := atomic.CompareAndSwapInt32(&bba.stopFlag, int32(0), int32(1)); !first {
 		return
@@ -188,27 +197,27 @@ func (bba *BBA) Trace() {
 }
 
 func (bba *BBA) muxMessage(sender cleisthenes.Member, round uint64, req cleisthenes.Request) error {
-	if round < bba.round.get() {
+	if round < bba.round.value() {
 		bba.Log(
 			"action", "muxMessage",
 			"message", "request from old round, abandon",
 			"sender", sender.Address.String(),
 			"type", reflect.TypeOf(req).String(),
 			"req.round", strconv.FormatUint(round, 10),
-			"my.round", strconv.FormatUint(bba.round.get(), 10),
+			"my.round", strconv.FormatUint(bba.round.value(), 10),
 		)
 		return nil
 	}
-	if round > bba.round.get() {
+	if round > bba.round.value() {
 		bba.Log(
 			"action", "muxMessage",
 			"message", "request from future round, keep it",
 			"sender", sender.Address.String(),
 			"type", reflect.TypeOf(req).String(),
 			"req.round", strconv.FormatUint(round, 10),
-			"my.round", strconv.FormatUint(bba.round.get(), 10),
+			"my.round", strconv.FormatUint(bba.round.value(), 10),
 		)
-		bba.incomingReqRepo.Save(round, sender.Address, req)
+		bba.saveIncomingRequest(round, sender, req)
 		return nil
 	}
 
@@ -232,7 +241,7 @@ func (bba *BBA) handleBvalRequest(sender cleisthenes.Member, bval *BvalRequest) 
 	if count == bba.binValueSetThreshold() {
 		bba.Log("action", "binValueSet", "count", strconv.Itoa(count))
 		bba.binValueSet.union(bval.Value)
-		bba.binValueChan <- struct{}{}
+		bba.binValueChan <- bba.round.value()
 		return nil
 	}
 	if count == bba.bvalBroadcastThreshold() && !bba.broadcastedBvalSet.exist(bval.Value) {
@@ -252,7 +261,8 @@ func (bba *BBA) handleAuxRequest(sender cleisthenes.Member, aux *AuxRequest) err
 	if count < bba.tryoutAgreementThreshold() {
 		return nil
 	}
-	bba.tryoutAgreementChan <- struct{}{}
+	bba.tryoutAgreementChan <- bba.round.value()
+
 	return nil
 }
 
@@ -261,13 +271,15 @@ func (bba *BBA) tryoutAgreement() {
 	if bba.done.Value() {
 		return
 	}
-	coin := bba.coinGenerator.Coin()
 
 	binList := bba.binValueSet.toList()
 	if len(binList) == 0 {
 		bba.Log("binary set is empty, but tried agreement")
 		return
 	}
+
+	coin := bba.coinGenerator.Coin(bba.round.value())
+
 	if len(binList) > 1 {
 		bba.Log("err", "bin value set size is larger than one")
 		bba.agreementFailed(cleisthenes.Binary(coin))
@@ -283,7 +295,7 @@ func (bba *BBA) tryoutAgreement() {
 
 func (bba *BBA) agreementFailed(estValue cleisthenes.Binary) {
 	bba.est.Set(estValue)
-	bba.advanceRoundChan <- struct{}{}
+	bba.advanceRoundChan <- bba.round.value()
 }
 
 func (bba *BBA) agreementSuccess(decValue cleisthenes.Binary) {
@@ -296,9 +308,9 @@ func (bba *BBA) agreementSuccess(decValue cleisthenes.Binary) {
 	bba.Log(
 		"action", "agreementSucess",
 		"message", "<agreement finish>",
-		"my.round", strconv.FormatUint(bba.round.get(), 10),
+		"my.round", strconv.FormatUint(bba.round.value(), 10),
 	)
-	bba.advanceRoundChan <- struct{}{}
+	bba.advanceRoundChan <- bba.round.value()
 }
 
 func (bba *BBA) advanceRound() {
@@ -312,17 +324,41 @@ func (bba *BBA) advanceRound() {
 
 	bba.round.inc()
 
-	bba.handleDelayedRequest()
+	bba.handleDelayedBvalRequest()
 
 	bba.HandleInput(&BvalRequest{
 		Value: bba.est.Value(),
 	})
 }
 
-func (bba *BBA) handleDelayedRequest() {
-	delayedReqMap := bba.incomingReqRepo.Find(bba.round.get())
+func (bba *BBA) handleDelayedBvalRequest() {
+	delayedReqMap := bba.incomingBvalReqRepo.Find(bba.round.value())
 	for _, ir := range delayedReqMap {
-		if ir.round != bba.round.get() {
+		if ir.round != bba.round.value() {
+			continue
+		}
+		bba.Log(
+			"action", "handleDelayedRequest",
+			"round", strconv.FormatUint(ir.round, 10),
+			"size", strconv.Itoa(len(delayedReqMap)),
+			"addr", ir.addr.String(),
+			"type", reflect.TypeOf(ir.req).String(),
+		)
+		r := request{
+			sender: cleisthenes.Member{Address: ir.addr},
+			data:   ir.req,
+			round:  ir.round,
+			err:    make(chan error),
+		}
+		bba.reqChan <- r
+	}
+	bba.Log("action", "handleDelayedRequest", "message", "done")
+}
+
+func (bba *BBA) handleDelayedAuxRequest() {
+	delayedReqMap := bba.incomingAuxReqRepo.Find(bba.round.value())
+	for _, ir := range delayedReqMap {
+		if ir.round != bba.round.value() {
 			continue
 		}
 		bba.Log(
@@ -347,7 +383,7 @@ func (bba *BBA) broadcastAuxOnceForRound() {
 	if bba.auxBroadcasted.Value() == true {
 		return
 	}
-	bba.Log("action", "broadcastAux", "from", bba.owner.Address.String(), "round", strconv.FormatUint(bba.round.get(), 10))
+	bba.Log("action", "broadcastAux", "from", bba.owner.Address.String(), "round", strconv.FormatUint(bba.round.value(), 10))
 	for _, bin := range bba.binValueSet.toList() {
 		if err := bba.broadcast(&AuxRequest{
 			Value: bin,
@@ -355,6 +391,7 @@ func (bba *BBA) broadcastAuxOnceForRound() {
 			bba.Log("action", "broadcastAux", "err", err.Error())
 		}
 	}
+
 	bba.auxBroadcasted.Set(true)
 }
 
@@ -375,7 +412,7 @@ func (bba *BBA) broadcast(req cleisthenes.Request) error {
 
 	bbaMsg := &pb.Message_Bba{
 		Bba: &pb.BBA{
-			Round:   bba.round.get(),
+			Round:   bba.round.value(),
 			Type:    typ,
 			Payload: payload,
 		},
@@ -403,12 +440,19 @@ func (bba *BBA) run() {
 			bba.closeChan <- struct{}{}
 		case req := <-bba.reqChan:
 			bba.muxMessage(req.sender, req.round, req.data)
-		case <-bba.binValueChan:
-			bba.broadcastAuxOnceForRound()
-		case <-bba.tryoutAgreementChan:
-			bba.tryoutAgreement()
-		case <-bba.advanceRoundChan:
-			bba.advanceRound()
+		case r := <-bba.binValueChan:
+			if bba.matchWithCurrentRound(r) {
+				bba.broadcastAuxOnceForRound()
+				bba.handleDelayedAuxRequest()
+			}
+		case r := <-bba.tryoutAgreementChan:
+			if bba.matchWithCurrentRound(r) {
+				bba.tryoutAgreement()
+			}
+		case r := <-bba.advanceRoundChan:
+			if bba.matchWithCurrentRound(r) {
+				bba.advanceRound()
+			}
 		}
 	}
 }
@@ -510,4 +554,20 @@ func (bba *BBA) processAuxMessage(msg *pb.Message_Bba) (cleisthenes.Request, uin
 		return nil, 0, err
 	}
 	return req, msg.Bba.Round, nil
+}
+
+func (bba *BBA) saveIncomingRequest(round uint64, sender cleisthenes.Member, req cleisthenes.Request) {
+	switch r := req.(type) {
+	case *BvalRequest:
+		bba.incomingBvalReqRepo.Save(round, sender.Address, r)
+	case *AuxRequest:
+		bba.incomingAuxReqRepo.Save(round, sender.Address, r)
+	}
+}
+
+func (bba *BBA) matchWithCurrentRound(round uint64) bool {
+	if round != bba.round.value() {
+		return false
+	}
+	return true
 }

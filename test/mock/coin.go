@@ -18,8 +18,6 @@ func NewCoinGenerator(seed cleisthenes.Coin) *CoinGenerator {
 	}
 }
 
-func (g *CoinGenerator) Coin() cleisthenes.Coin {
-	result := g.Seed
-	g.Seed = !g.Seed
-	return result
+func (g *CoinGenerator) Coin(salt uint64) cleisthenes.Coin {
+	return cleisthenes.Coin(salt%2 != 0)
 }

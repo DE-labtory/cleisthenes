@@ -3,5 +3,5 @@ package cleisthenes
 type Coin Binary
 
 type CoinGenerator interface {
-	Coin() Coin
+	Coin(uint64) Coin
 }

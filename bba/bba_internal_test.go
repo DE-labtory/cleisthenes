@@ -103,7 +103,7 @@ func setupHandleBvalRequestTest(t *testing.T, bvalList []*BvalRequest) (*BBA, *m
 		round:              newRound(),
 		reqChan:            make(chan request),
 
-		binValueChan:  make(chan struct{}, 10),
+		binValueChan:  make(chan uint64, 10),
 		Tracer:        cleisthenes.NewMemCacheTracer(),
 		coinGenerator: mock.NewCoinGenerator(cleisthenes.Coin(cleisthenes.One)),
 	}
@@ -311,7 +311,10 @@ func setupHandleAuxRequestTest(t *testing.T, auxList []*AuxRequest) (*BBA, *mock
 		f:                   3,
 		auxRepo:             newAuxReqRepository(),
 		broadcaster:         broadcaster,
-		tryoutAgreementChan: make(chan struct{}, 10),
+		binValueSet:         newBinarySet(),
+		round:               newRound(),
+		incomingAuxReqRepo:  newDefaultIncomingRequestRepository(),
+		tryoutAgreementChan: make(chan uint64, 10),
 		Tracer:              cleisthenes.NewMemCacheTracer(),
 		coinGenerator:       mock.NewCoinGenerator(cleisthenes.Coin(cleisthenes.One)),
 	}
@@ -336,6 +339,8 @@ func TestBBA_HandleAuxRequest(t *testing.T) {
 	}
 
 	bbaInstance, _, tester, teardown := setupHandleAuxRequestTest(t, auxList)
+	// after bval is set
+	bbaInstance.binValueSet.union(cleisthenes.One)
 	defer teardown()
 
 	go func() {
@@ -397,6 +402,8 @@ func TestBBA_HandleAuxRequest_OneZeroCombined(t *testing.T) {
 	}
 
 	bbaInstance, _, tester, teardown := setupHandleAuxRequestTest(t, auxList)
+	// after bval is set
+	bbaInstance.binValueSet.union(cleisthenes.One)
 	defer teardown()
 
 	go func() {
@@ -456,8 +463,8 @@ func tryoutAgreementTestSetup() (*BBA, *bbaTester, func()) {
 		est:                 cleisthenes.NewBinaryState(),
 		dec:                 cleisthenes.NewBinaryState(),
 		round:               newRound(),
-		tryoutAgreementChan: make(chan struct{}, 10),
-		advanceRoundChan:    make(chan struct{}, 10),
+		tryoutAgreementChan: make(chan uint64, 10),
+		advanceRoundChan:    make(chan uint64, 10),
 		Tracer:              cleisthenes.NewMemCacheTracer(),
 		coinGenerator:       mock.NewCoinGenerator(cleisthenes.Coin(cleisthenes.One)),
 		binInputChan:        cleisthenes.NewBinaryChannel(10),
