@@ -1,30 +1,41 @@
 package acs
 
 import (
+	"errors"
+	"fmt"
 	"sync/atomic"
+
+	"github.com/DE-labtory/iLogger"
+
+	"github.com/DE-labtory/cleisthenes/rbc"
 
 	"github.com/DE-labtory/cleisthenes"
 	"github.com/DE-labtory/cleisthenes/bba"
 	"github.com/DE-labtory/cleisthenes/pb"
-	"github.com/DE-labtory/cleisthenes/rbc"
 )
 
 type request struct {
-	sender cleisthenes.Member
-	data   *pb.Message
-	err    chan error
+	proposer cleisthenes.Member
+	sender   cleisthenes.Member
+	data     *pb.Message
+	err      chan error
 }
 
 type ACS struct {
+	// number of network nodes
+	n int
+	// number of byzantine nodes which can tolerate
+	f int
+
 	owner cleisthenes.Member
-	cleisthenes.Tracer
+
+	memberMap cleisthenes.MemberMap
+	output    map[cleisthenes.Member][]byte
 	// rbcMap has rbc instances
-	// TODO: abstract map into repository
-	rbcMap map[cleisthenes.Address]*rbc.RBC
+	rbcRepo *RBCRepository
 
 	// bbaMap has bba instances
-	// TODO: abstract map into repository
-	bbaMap map[cleisthenes.Address]*bba.BBA
+	bbaRepo *BBARepository
 
 	// broadcastResult collects RBC instances' result
 	broadcastResult broadcastDataMap
@@ -35,40 +46,91 @@ type ACS struct {
 	// binary byzantine agreement
 	agreementStarted binaryStateMap
 
+	dec cleisthenes.BinaryState
+
 	reqChan       chan request
 	agreementChan chan struct{}
 	closeChan     chan struct{}
 
 	stopFlag int32
 
-	binOutputChan cleisthenes.BinaryReceiver
+	dataReceiver   cleisthenes.DataReceiver
+	binaryReceiver cleisthenes.BinaryReceiver
+	batchSender    cleisthenes.BatchSender
 
-	// done sends signal when ACS done its task
-	done chan struct{}
+	roundReceiver cleisthenes.BinaryReceiver
 }
 
-func New(owner cleisthenes.Member, binOutputChan cleisthenes.BinaryReceiver, binInputChan cleisthenes.BinarySender) *ACS {
-	return &ACS{
-		owner:  owner,
-		rbcMap: make(map[cleisthenes.Address]*rbc.RBC),
-		bbaMap: make(map[cleisthenes.Address]*bba.BBA),
+func New(
+	n int,
+	f int,
+	owner cleisthenes.Member,
+	memberMap cleisthenes.MemberMap,
+	dataReceiver cleisthenes.DataReceiver,
+	dataSender cleisthenes.DataSender,
+	binaryReceiver cleisthenes.BinaryReceiver,
+	binarySender cleisthenes.BinarySender,
+	batchSender cleisthenes.BatchSender,
+	broadCaster cleisthenes.Broadcaster) (*ACS, error) {
+
+	acs := &ACS{
+		n:                n,
+		f:                f,
+		owner:            owner,
+		memberMap:        memberMap,
+		rbcRepo:          NewRBCRepository(),
+		bbaRepo:          NewBBARepository(),
+		broadcastResult:  NewbroadcastDataMap(),
+		agreementResult:  NewBinaryStateMap(),
+		agreementStarted: NewBinaryStateMap(),
 		// TODO : consider size of reqChan, otherwise this might cause requests to be lost
-		reqChan:       make(chan request),
-		closeChan:     make(chan struct{}, 1),
-		binOutputChan: binOutputChan,
+		reqChan:        make(chan request),
+		agreementChan:  make(chan struct{}, n),
+		closeChan:      make(chan struct{}, 1),
+		dataReceiver:   dataReceiver,
+		binaryReceiver: binaryReceiver,
+		batchSender:    batchSender,
 	}
+
+	for _, member := range memberMap.Members() {
+		r, err := rbc.New(n, f, owner, member, broadCaster, dataSender)
+		b := bba.New(n, f, owner, member, broadCaster, binarySender)
+		if err != nil {
+			return nil, err
+		}
+		acs.rbcRepo.Save(member, r)
+		acs.bbaRepo.Save(member, b)
+
+		acs.broadcastResult.set(member, []byte{})
+		acs.agreementResult.set(member, *cleisthenes.NewBinaryState())
+		acs.agreementStarted.set(member, *cleisthenes.NewBinaryState())
+	}
+
+	go acs.run()
+	return acs, nil
 }
 
-// HandleInput receive batch from honeybadger
-func (acs *ACS) HandleInput(batch cleisthenes.Batch) error {
-	return nil
+// HandleInput receive encrypted batch from honeybadger
+func (acs *ACS) HandleInput(data []byte) error {
+	rbc, err := acs.rbcRepo.Find(acs.owner)
+	if err != nil {
+		return errors.New(fmt.Sprintf("no match rbc instance - address : %s", acs.owner.Address.String()))
+	}
+
+	return rbc.HandleInput(data)
 }
 
 func (acs *ACS) HandleMessage(sender cleisthenes.Member, msg *pb.Message) error {
+	proposerAddr, err := cleisthenes.ToAddress(msg.Proposer)
+	if err != nil {
+		return err
+	}
+	proposer := acs.memberMap.Member(proposerAddr)
 	req := request{
-		sender: sender,
-		data:   msg,
-		err:    make(chan error),
+		proposer: proposer,
+		sender:   sender,
+		data:     msg,
+		err:      make(chan error),
 	}
 
 	acs.reqChan <- req
@@ -89,25 +151,33 @@ func (acs *ACS) Close() {
 	close(acs.closeChan)
 }
 
-func (acs *ACS) muxMessage(sender cleisthenes.Member, msg *pb.Message) error {
+func (acs *ACS) muxMessage(proposer, sender cleisthenes.Member, msg *pb.Message) error {
 	switch pl := msg.Payload.(type) {
 	case *pb.Message_Rbc:
-		return acs.handleRbcMessage(sender, pl)
+		return acs.handleRbcMessage(proposer, sender, pl)
 	case *pb.Message_Bba:
-		return acs.handleBbaMessage(sender, pl)
+		return acs.handleBbaMessage(proposer, sender, pl)
 	default:
 		return cleisthenes.ErrUndefinedRequestType
 	}
 }
 
-func (acs *ACS) handleRbcMessage(sender cleisthenes.Member, msg *pb.Message_Rbc) error {
-	// TODO: provide input to RBC
-	return nil
+func (acs *ACS) handleRbcMessage(proposer, sender cleisthenes.Member, msg *pb.Message_Rbc) error {
+	rbc, err := acs.rbcRepo.Find(proposer)
+	if err != nil {
+		return errors.New(fmt.Sprintf("no match bba instance - address : %s", acs.owner.Address.String()))
+
+	}
+	return rbc.HandleMessage(sender, msg)
 }
 
-func (acs *ACS) handleBbaMessage(sender cleisthenes.Member, msg *pb.Message_Bba) error {
-	// TODO: provide input to BBA instance
-	return nil
+func (acs *ACS) handleBbaMessage(proposer, sender cleisthenes.Member, msg *pb.Message_Bba) error {
+	bba, err := acs.bbaRepo.Find(proposer)
+	if err != nil {
+		return errors.New(fmt.Sprintf("no match bba instance - address : %s", acs.owner.Address.String()))
+
+	}
+	return bba.HandleMessage(sender, msg)
 }
 
 func (acs *ACS) run() {
@@ -116,20 +186,169 @@ func (acs *ACS) run() {
 		case <-acs.closeChan:
 			acs.closeChan <- struct{}{}
 		case req := <-acs.reqChan:
-			req.err <- acs.muxMessage(req.sender, req.data)
+			req.err <- acs.muxMessage(req.proposer, req.sender, req.data)
+		case output := <-acs.dataReceiver.Receive():
+			acs.processData(output.Member, output.Data)
+			acs.tryAgreementStart(output.Member)
+			acs.tryCompleteAgreement()
 		case <-acs.agreementChan:
 			acs.sendZeroToIdleBba()
-		case output := <-acs.binOutputChan.Receive():
-			acs.tryCompleteAgreement(output.Member, output.Binary)
+		case output := <-acs.binaryReceiver.Receive():
+			acs.processAgreement(output.Member, output.Binary)
+			acs.tryCompleteAgreement()
 		}
 	}
 }
 
 // sendZeroToIdleBba send zero to bba instances which still do
 // not receive input value
-func (acs *ACS) sendZeroToIdleBba() {}
+func (acs *ACS) sendZeroToIdleBba() {
+	for _, member := range acs.memberMap.Members() {
+		b, err := acs.bbaRepo.Find(member)
+		if err != nil {
+			// log : fmt.Sprintf("no match bba instance - address : %s", sender.Address.String())
+		}
 
-func (acs *ACS) tryCompleteAgreement(sender cleisthenes.Member, bin cleisthenes.Binary) {}
+		if state := acs.agreementStarted.item(member); state.Undefined() && b.Accept() {
+			//iLogger.Infof(nil, "[SEND ZERO] owner : %s, proposer : %s", acs.owner.Address.String(), member.Address.String())
+			b.HandleInput(&bba.BvalRequest{Value: cleisthenes.Zero})
+		}
+	}
+}
+
+func (acs *ACS) tryCompleteAgreement() {
+	//acs.printDoneAgreement()
+	if acs.dec.Value() || acs.countDoneAgreement() != acs.agreementDoneThreshold() {
+		return
+	}
+
+	agreedNodeList := make([]cleisthenes.Member, 0)
+	for member, state := range acs.agreementResult.itemMap() {
+		if state.Value() {
+			agreedNodeList = append(agreedNodeList, member)
+		}
+	}
+
+	bcResult := make(map[cleisthenes.Member][]byte)
+
+	for _, member := range agreedNodeList {
+		if data := acs.broadcastResult.item(member); data != nil && len(data) != 0 {
+			bcResult[member] = data
+		}
+	}
+
+	if len(agreedNodeList) == len(bcResult) && len(bcResult) != 0 {
+		//iLogger.Infof(nil,"[ACS DONE] owner : %s", acs.owner.Address.String())
+		acs.agreementSuccess(bcResult)
+	}
+}
+
+func (acs *ACS) agreementSuccess(result map[cleisthenes.Member][]byte) {
+	acs.batchSender.Send(cleisthenes.BatchMessage{
+		Batch: result,
+	})
+	acs.dec.Set(true)
+	//iLogger.Infof(nil, "[ACS DONE] owner : %s", acs.owner.Address.String())
+}
+
+func (acs *ACS) tryAgreementStart(sender cleisthenes.Member) {
+	b, err := acs.bbaRepo.Find(sender)
+	if err != nil {
+		// log : fmt.Sprintf("no match bba instance - address : %s", acs.owner.Address.String())
+		return
+	}
+
+	if ok := acs.agreementStarted.exist(sender); !ok {
+		// log : fmt.Sprintf("no match agreementStarted item - address : %s", sender.Address.String())
+		return
+	}
+
+	state := acs.agreementStarted.item(sender)
+	if state.Value() {
+		// log : fmt.Sprintf("already started bba - address :%s", sender.Address)
+		return
+	}
+
+	b.HandleInput(&bba.BvalRequest{Value: cleisthenes.One})
+	state.Set(cleisthenes.One)
+	acs.agreementStarted.set(sender, state)
+	return
+}
+
+func (acs *ACS) processData(sender cleisthenes.Member, data []byte) {
+	if ok := acs.broadcastResult.exist(sender); !ok {
+		// log : fmt.Sprintf("no match broadcastResult item - address : %s", sender.Address.String())
+		return
+	}
+
+	if data := acs.broadcastResult.item(sender); len(data) != 0 {
+		// log : fmt.Sprintf("already processed data - address : %s", sender.Address.String())
+		return
+	}
+
+	acs.broadcastResult.set(sender, data)
+
+	//iLogger.Infof(nil, "[RBC DONE] owner : %s, proposer : %s", acs.owner.Address.String(), sender.Address.String())
+}
+
+// proposer?
+func (acs *ACS) processAgreement(sender cleisthenes.Member, bin cleisthenes.Binary) {
+	if ok := acs.agreementResult.exist(sender); !ok {
+		//iLogger.Debugf(nil, "no match agreementResult item - address : %s", sender.Address.String())
+		//
+		// log : fmt.Sprintf("no match agreementResult item - address : %s", sender.Address.String())
+		return
+	}
+
+	state := acs.agreementResult.item(sender)
+	if state.Value() {
+		//iLogger.Debugf(nil, "already processed agreement - address : %s", sender.Address.String())
+		// log : fmt.Sprintf("already processed agreement - address : %s", sender.Address.String())
+		return
+	}
+
+	state.Set(bin)
+	acs.agreementResult.set(sender, state)
+	//iLogger.Debugf(nil, "[BBA DONE] owner : %s, proposer : %s", acs.owner.Address.String(), sender.Address.String())
+
+	if acs.countSuccessDoneAgreement() == acs.agreementThreshold() {
+		acs.agreementChan <- struct{}{}
+	}
+}
+
+func (acs *ACS) printDoneAgreement() {
+	for member, state := range acs.agreementResult.itemMap() {
+		iLogger.Infof(nil, "[ACS CHECK] owner : %s, member : %s, state : %v, undifined : %v\n", acs.owner.Address.String(), member.Address.String(), state.Value(), state.Undefined())
+	}
+}
+
+func (acs *ACS) countSuccessDoneAgreement() int {
+	cnt := 0
+	for _, state := range acs.agreementResult.itemMap() {
+		if state.Value() {
+			cnt++
+		}
+	}
+	return cnt
+}
+
+func (acs *ACS) countDoneAgreement() int {
+	cnt := 0
+	for _, state := range acs.agreementResult.itemMap() {
+		if !state.Undefined() {
+			cnt++
+		}
+	}
+	return cnt
+}
+
+func (acs *ACS) agreementThreshold() int {
+	return acs.n - acs.f
+}
+
+func (acs *ACS) agreementDoneThreshold() int {
+	return acs.n
+}
 
 func (acs *ACS) toDie() bool {
 	return atomic.LoadInt32(&(acs.stopFlag)) == int32(1)
