@@ -39,6 +39,10 @@ func (bba *mockBBA) HandleMessage(sender cleisthenes.Member, msg *pb.Message_Bba
 	return nil
 }
 
+func (bba *mockBBA) Idle() bool {
+	return true
+}
+
 func (bba *mockBBA) Close() {}
 
 func setupACS(t *testing.T, n, f int, owner cleisthenes.Member, memberList []cleisthenes.Member) *ACS {
@@ -74,6 +78,7 @@ func setupACS(t *testing.T, n, f int, owner cleisthenes.Member, memberList []cle
 		agreementResult:  agreementResult,
 		agreementStarted: agreementStarted,
 		reqChan:          make(chan request),
+		agreementChan:    make(chan struct{}, n),
 		closeChan:        make(chan struct{}, 1),
 		dataReceiver:     cleisthenes.NewDataChannel(n),
 		binaryReceiver:   cleisthenes.NewBinaryChannel(n),

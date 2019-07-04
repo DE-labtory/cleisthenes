@@ -94,7 +94,7 @@ type RBC struct {
 	echoReqRepo  cleisthenes.RequestRepository
 	readyReqRepo cleisthenes.RequestRepository
 
-	valReceived, echoSent, readySent *cleisthenes.BinaryState
+	valReceived, echoSent, readySent, done *cleisthenes.BinaryState
 
 	// internal channels to communicate with other components
 	closeChan chan struct{}
@@ -135,6 +135,7 @@ func New(
 		valReceived:     cleisthenes.NewBinaryState(),
 		echoSent:        cleisthenes.NewBinaryState(),
 		readySent:       cleisthenes.NewBinaryState(),
+		done:            cleisthenes.NewBinaryState(),
 		closeChan:       make(chan struct{}),
 		reqChan:         make(chan request),
 		broadcaster:     broadcaster,
@@ -317,7 +318,7 @@ func (rbc *RBC) handleEchoRequest(sender cleisthenes.Member, req *EchoRequest) e
 		rbc.shareMessage(rbc.proposer, readyReq)
 	}
 
-	if rbc.countReadys(req.RootHash) >= rbc.outputThreshold() && rbc.countEchos(req.RootHash) >= rbc.echoThreshold() {
+	if !rbc.done.Value() && rbc.countReadys(req.RootHash) >= rbc.outputThreshold() && rbc.countEchos(req.RootHash) >= rbc.echoThreshold() {
 		value, err := rbc.tryDecodeValue(req.RootHash)
 		if err != nil {
 			return err
@@ -325,6 +326,7 @@ func (rbc *RBC) handleEchoRequest(sender cleisthenes.Member, req *EchoRequest) e
 		rbc.decodeSuccess(value)
 	}
 
+	fmt.Printf("[Echo Req] owner : %s, sender : %s\n", rbc.owner.Address.String(), sender.Address.String())
 	return nil
 }
 
@@ -342,7 +344,7 @@ func (rbc *RBC) handleReadyRequest(sender cleisthenes.Member, req *ReadyRequest)
 		rbc.shareMessage(rbc.proposer, &ReadyRequest{req.RootHash})
 	}
 
-	if rbc.countReadys(req.RootHash) >= rbc.outputThreshold() && rbc.countEchos(req.RootHash) >= rbc.echoThreshold() {
+	if !rbc.done.Value() && rbc.countReadys(req.RootHash) >= rbc.outputThreshold() && rbc.countEchos(req.RootHash) >= rbc.echoThreshold() {
 		value, err := rbc.tryDecodeValue(req.RootHash)
 		if err != nil {
 			return err
@@ -350,6 +352,7 @@ func (rbc *RBC) handleReadyRequest(sender cleisthenes.Member, req *ReadyRequest)
 		rbc.decodeSuccess(value)
 	}
 
+	fmt.Printf("[Ready Req] owner : %s, sender : %s\n", rbc.owner.Address.String(), sender.Address.String())
 	return nil
 }
 
@@ -430,6 +433,7 @@ func (rbc *RBC) tryDecodeValue(rootHash []byte) ([]byte, error) {
 
 func (rbc *RBC) decodeSuccess(decValue []byte) {
 	rbc.output.set(decValue)
+	rbc.done.Set(true)
 	rbc.dataSender.Send(cleisthenes.DataMessage{
 		Member: rbc.proposer,
 		Data:   rbc.output.value(),

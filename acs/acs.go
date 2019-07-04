@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"github.com/DE-labtory/iLogger"
-
 	"github.com/DE-labtory/cleisthenes/rbc"
 
 	"github.com/DE-labtory/cleisthenes"
@@ -61,6 +59,7 @@ type ACS struct {
 	roundReceiver cleisthenes.BinaryReceiver
 }
 
+// TODO : the coin generator must be injected outside the ACS, BBA should has it's own coin generator.
 func New(
 	n int,
 	f int,
@@ -206,18 +205,16 @@ func (acs *ACS) sendZeroToIdleBba() {
 	for _, member := range acs.memberMap.Members() {
 		b, err := acs.bbaRepo.Find(member)
 		if err != nil {
-			// log : fmt.Sprintf("no match bba instance - address : %s", sender.Address.String())
+			fmt.Printf("no match bba instance - address : %s\n", member.Address.String())
 		}
 
-		if state := acs.agreementStarted.item(member); state.Undefined() && b.Accept() {
-			//iLogger.Infof(nil, "[SEND ZERO] owner : %s, proposer : %s", acs.owner.Address.String(), member.Address.String())
+		if state := acs.agreementStarted.item(member); state.Undefined() && b.Idle() {
 			b.HandleInput(&bba.BvalRequest{Value: cleisthenes.Zero})
 		}
 	}
 }
 
 func (acs *ACS) tryCompleteAgreement() {
-	//acs.printDoneAgreement()
 	if acs.dec.Value() || acs.countDoneAgreement() != acs.agreementDoneThreshold() {
 		return
 	}
@@ -238,7 +235,6 @@ func (acs *ACS) tryCompleteAgreement() {
 	}
 
 	if len(agreedNodeList) == len(bcResult) && len(bcResult) != 0 {
-		//iLogger.Infof(nil,"[ACS DONE] owner : %s", acs.owner.Address.String())
 		acs.agreementSuccess(bcResult)
 	}
 }
@@ -248,24 +244,23 @@ func (acs *ACS) agreementSuccess(result map[cleisthenes.Member][]byte) {
 		Batch: result,
 	})
 	acs.dec.Set(true)
-	//iLogger.Infof(nil, "[ACS DONE] owner : %s", acs.owner.Address.String())
 }
 
 func (acs *ACS) tryAgreementStart(sender cleisthenes.Member) {
 	b, err := acs.bbaRepo.Find(sender)
 	if err != nil {
-		// log : fmt.Sprintf("no match bba instance - address : %s", acs.owner.Address.String())
+		fmt.Printf("no match bba instance - address : %s\n", acs.owner.Address.String())
 		return
 	}
 
 	if ok := acs.agreementStarted.exist(sender); !ok {
-		// log : fmt.Sprintf("no match agreementStarted item - address : %s", sender.Address.String())
+		fmt.Printf("no match agreementStarted item - address : %s\n", sender.Address.String())
 		return
 	}
 
 	state := acs.agreementStarted.item(sender)
 	if state.Value() {
-		// log : fmt.Sprintf("already started bba - address :%s", sender.Address)
+		fmt.Printf("already started bba - address :%s\n", sender.Address)
 		return
 	}
 
@@ -277,48 +272,35 @@ func (acs *ACS) tryAgreementStart(sender cleisthenes.Member) {
 
 func (acs *ACS) processData(sender cleisthenes.Member, data []byte) {
 	if ok := acs.broadcastResult.exist(sender); !ok {
-		// log : fmt.Sprintf("no match broadcastResult item - address : %s", sender.Address.String())
+		fmt.Printf("no match broadcastResult item - address : %s\n", sender.Address.String())
 		return
 	}
 
 	if data := acs.broadcastResult.item(sender); len(data) != 0 {
-		// log : fmt.Sprintf("already processed data - address : %s", sender.Address.String())
+		fmt.Printf("already processed data - address : %s\n", sender.Address.String())
 		return
 	}
 
 	acs.broadcastResult.set(sender, data)
-
-	//iLogger.Infof(nil, "[RBC DONE] owner : %s, proposer : %s", acs.owner.Address.String(), sender.Address.String())
 }
 
-// proposer?
 func (acs *ACS) processAgreement(sender cleisthenes.Member, bin cleisthenes.Binary) {
 	if ok := acs.agreementResult.exist(sender); !ok {
-		//iLogger.Debugf(nil, "no match agreementResult item - address : %s", sender.Address.String())
-		//
-		// log : fmt.Sprintf("no match agreementResult item - address : %s", sender.Address.String())
+		fmt.Printf("no match agreementResult item - address : %s\n", sender.Address.String())
 		return
 	}
 
 	state := acs.agreementResult.item(sender)
 	if state.Value() {
-		//iLogger.Debugf(nil, "already processed agreement - address : %s", sender.Address.String())
-		// log : fmt.Sprintf("already processed agreement - address : %s", sender.Address.String())
+		fmt.Printf("already processed agreement - address : %s\n", sender.Address.String())
 		return
 	}
 
 	state.Set(bin)
 	acs.agreementResult.set(sender, state)
-	//iLogger.Debugf(nil, "[BBA DONE] owner : %s, proposer : %s", acs.owner.Address.String(), sender.Address.String())
 
 	if acs.countSuccessDoneAgreement() == acs.agreementThreshold() {
 		acs.agreementChan <- struct{}{}
-	}
-}
-
-func (acs *ACS) printDoneAgreement() {
-	for member, state := range acs.agreementResult.itemMap() {
-		iLogger.Infof(nil, "[ACS CHECK] owner : %s, member : %s, state : %v, undifined : %v\n", acs.owner.Address.String(), member.Address.String(), state.Value(), state.Undefined())
 	}
 }
 

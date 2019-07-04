@@ -12,7 +12,7 @@ type BBA interface {
 	HandleInput(bvalRequest *bba.BvalRequest) error
 	HandleMessage(sender cleisthenes.Member, msg *pb.Message_Bba) error
 	Close()
-	Accept() bool
+	Idle() bool
 }
 
 type BBARepository struct {
