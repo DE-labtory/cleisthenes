@@ -45,7 +45,7 @@ var defaultConfig = &Config{
 		NetworkSize:     10,
 		Byzantine:       3,
 		BatchSize:       3,
-		ProposeInterval: 1 * time.Second,
+		ProposeInterval: 2 * time.Second,
 	},
 	Members: Members{
 		Addresses: []string{
