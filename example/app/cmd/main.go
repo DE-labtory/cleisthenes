@@ -3,10 +3,11 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/DE-labtory/cleisthenes"
+	"github.com/DE-labtory/cleisthenes/core"
 	"net/http"
 	"os"
 
-	"github.com/DE-labtory/cleisthenes/example/app/mock"
 
 	"github.com/DE-labtory/cleisthenes/config"
 	"github.com/DE-labtory/cleisthenes/example/app"
@@ -15,7 +16,7 @@ import (
 
 func main() {
 	host := flag.String("address", "127.0.0.1", "Application address")
-	port := flag.Int("port", 5555, "Application port")
+	port := flag.Int("port", 8080, "Application port")
 	configPath := flag.String("config", "", "User defined config path")
 
 	address := fmt.Sprintf("%s:%d", *host, *port)
@@ -26,13 +27,17 @@ func main() {
 
 	config.Init(*configPath)
 
-	node := mock.NewMockNode(httpLogger)
+	//node := mock.NewMockNode(httpLogger)
 
-	// TODO: change to real hbbft
-	//node, err := cleisthenes.New()
-	//if err != nil {
-	//	panic(fmt.Sprintf("Cleisthenes instantiate failed with err: %s", err))
-	//}
+	txValidator := func(tx cleisthenes.Transaction) bool {
+		// custom transaction validation logic
+		return true
+	}
+
+	node, err := core.New(txValidator)
+	if err != nil {
+		panic(fmt.Sprintf("Cleisthenes instantiate failed with err: %s", err))
+	}
 
 	go func() {
 		httpLogger.Log("message", "hbbft started")

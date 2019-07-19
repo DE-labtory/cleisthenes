@@ -3,6 +3,7 @@ package cleisthenes
 import (
 	"errors"
 	"fmt"
+	"github.com/DE-labtory/iLogger"
 	"math/rand"
 	"sync"
 	"sync/atomic"
@@ -178,6 +179,7 @@ func (m *DefaultTxQueueManager) runContributionProposeRoutine() {
 		if !m.hb.OnConsensus() {
 			m.tryPropose()
 		}
+		iLogger.Debug(nil, "[DefaultTxQueueManager] try to propose contribution...")
 		time.Sleep(m.tryInterval)
 	}
 }

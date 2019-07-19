@@ -108,3 +108,18 @@ func (f *DefaultACSFactory) Create() (ACS, error) {
 		f.broadcaster,
 	)
 }
+
+type fakeACS struct {}
+
+func (a *fakeACS) HandleInput(data []byte) error {
+	return nil
+}
+func (a *fakeACS) HandleMessage(sender cleisthenes.Member, msg *pb.Message) error {
+	return nil
+}
+
+type FakeACSFactory struct {}
+
+func (f *FakeACSFactory) Create() (ACS, error) {
+	return &fakeACS{}, nil
+}
