@@ -25,11 +25,14 @@ exit 1
 fi
 
 # notify to coveralls
-goveralls -coverprofile=coverage.out -service=travis-ci
+goveralls -coverprofile=cover.out -service=travis-ci
 
 if [ $? -ne 0 ]; then
 echo "go update test coverage fail" >&2
 exit 1
 fi
+
+# remove
+rm total.out cover.out
 
 exit 0
