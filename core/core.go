@@ -89,9 +89,9 @@ func New(txValidator cleisthenes.TxValidator) (Hbbft, error) {
 		txQueueManager: cleisthenes.NewDefaultTxQueueManager(
 			txQueue,
 			hb,
-			conf.HoneyBadger.BatchSize,
+			conf.HoneyBadger.BatchSize/len(memberMap.Members()),
 			// TODO : contribution size = B / N
-			conf.HoneyBadger.BatchSize*len(memberMap.Members()),
+			conf.HoneyBadger.BatchSize,
 			conf.HoneyBadger.ProposeInterval,
 			txValidator,
 		),

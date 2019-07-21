@@ -42,10 +42,10 @@ var defaultConfig = &Config{
 		Address: "localhost:15555",
 	},
 	HoneyBadger: HoneyBadger{
-		NetworkSize:     10,
-		Byzantine:       3,
-		BatchSize:       3,
-		ProposeInterval: 2 * time.Second,
+		NetworkSize:     4,
+		Byzantine:       1,
+		BatchSize:       32,
+		ProposeInterval: 1 * time.Second,
 	},
 	Members: Members{
 		Addresses: []string{
