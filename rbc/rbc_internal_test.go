@@ -33,7 +33,7 @@ func setUpMockNode(t *testing.T, n int, f int, owner cleisthenes.Member, memberM
 	dataChannel := cleisthenes.NewDataChannel(n)
 	rbcList := make([]*RBC, 0)
 	for _, member := range memberMap.Members() {
-		rbc, _ := New(n, f, owner, member, bc, dataChannel)
+		rbc, _ := New(n, f, 1, owner, member, bc, dataChannel)
 		rbcList = append(rbcList, rbc)
 	}
 
@@ -128,7 +128,7 @@ func Test_RBC_handleValueRequest(t *testing.T) {
 		bc := setUpMockBC(t, memberMap)
 		dataChannel := cleisthenes.NewDataChannel(n)
 
-		rbc, _ := New(n, f, *owner, cleisthenes.Member{}, bc, dataChannel)
+		rbc, _ := New(n, f, 1, *owner, cleisthenes.Member{}, bc, dataChannel)
 		rbcList = append(rbcList, rbc)
 		bcList = append(bcList, bc)
 	}

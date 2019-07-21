@@ -188,7 +188,7 @@ func TestDefaultTxQueueManager_AddTransactionAndProposeContribution(t *testing.T
 		},
 	}
 
-	batchSize := 3
+	batchSize := 24
 	nodeNum := 8
 
 	hb := &MockHoneyBadger{}
@@ -220,8 +220,8 @@ func TestDefaultTxQueueManager_AddTransactionAndProposeContribution(t *testing.T
 	manager := NewDefaultTxQueueManager(
 		NewTxQueue(),
 		hb,
+		batchSize/nodeNum,
 		batchSize,
-		batchSize*nodeNum,
 		time.Second,
 		txValidator,
 	)

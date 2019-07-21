@@ -17,6 +17,7 @@ import (
 type ACS interface {
 	HandleInput(data []byte) error
 	HandleMessage(sender cleisthenes.Member, msg *pb.Message) error
+	Close()
 }
 
 type acsRepository struct {
@@ -44,15 +45,23 @@ func (r *acsRepository) save(epoch cleisthenes.Epoch, instance ACS) error {
 }
 
 func (r *acsRepository) find(epoch cleisthenes.Epoch) (ACS, bool) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
 	result, ok := r.items[epoch]
 	return result, ok
+}
+
+func (r *acsRepository) delete(epoch cleisthenes.Epoch) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	delete(r.items, epoch)
 }
 
 // ACSFactory helps create ACS instance easily. To create ACS, we need lots of DI
 // And for the ease of creating ACS, ACSFactory have components which is need to
 // create ACS
 type ACSFactory interface {
-	Create() (ACS, error)
+	Create(epoch cleisthenes.Epoch) (ACS, error)
 }
 
 type DefaultACSFactory struct {
@@ -94,16 +103,20 @@ func NewDefaultACSFactory(
 	}
 }
 
-func (f *DefaultACSFactory) Create() (ACS, error) {
+func (f *DefaultACSFactory) Create(epoch cleisthenes.Epoch) (ACS, error) {
+	dataChan := cleisthenes.NewDataChannel(f.n)
+	binaryChan := cleisthenes.NewBinaryChannel(f.n)
+
 	return acs.New(
 		config.Get().HoneyBadger.NetworkSize,
 		config.Get().HoneyBadger.Byzantine,
+		epoch,
 		f.acsOwner,
 		f.memberMap,
-		f.dataReceiver,
-		f.dataSender,
-		f.binaryReceiver,
-		f.binarySender,
+		dataChan,
+		dataChan,
+		binaryChan,
+		binaryChan,
 		f.batchSender,
 		f.broadcaster,
 	)

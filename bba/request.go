@@ -45,6 +45,15 @@ func (r *bvalReqRepository) Save(addr cleisthenes.Address, req cleisthenes.Reque
 	if !ok {
 		return ErrInvalidType
 	}
+
+	///////
+	_, ok = r.reqMap[addr]
+	if ok {
+		if r.reqMap[addr].Value {
+			return nil
+		}
+	}
+
 	r.reqMap[addr] = bvalReq
 	return nil
 }
@@ -85,6 +94,15 @@ func (r *auxReqRepository) Save(addr cleisthenes.Address, req cleisthenes.Reques
 	if !ok {
 		return ErrInvalidType
 	}
+
+	/////
+	_, ok = r.reqMap[addr]
+	if ok {
+		if r.reqMap[addr].Value {
+			return nil
+		}
+	}
+
 	r.reqMap[addr] = auxReq
 	return nil
 }

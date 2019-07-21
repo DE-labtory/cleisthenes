@@ -31,7 +31,7 @@ type mockBBA struct {
 	HandleInputFunc func(bvalRequest *bba.BvalRequest) error
 }
 
-func (bba *mockBBA) HandleInput(bvalRequest *bba.BvalRequest) error {
+func (bba *mockBBA) HandleInput(round uint64, bvalRequest *bba.BvalRequest) error {
 	return bba.HandleInputFunc(bvalRequest)
 }
 
@@ -41,6 +41,10 @@ func (bba *mockBBA) HandleMessage(sender cleisthenes.Member, msg *pb.Message_Bba
 
 func (bba *mockBBA) Idle() bool {
 	return true
+}
+
+func (bba *mockBBA) Round() uint64 {
+	return 0
 }
 
 func (bba *mockBBA) Close() {}
