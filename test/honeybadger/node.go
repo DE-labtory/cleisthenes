@@ -1,4 +1,4 @@
-package acs
+package honeybadger
 
 import (
 	"errors"
@@ -7,11 +7,12 @@ import (
 	"time"
 
 	"github.com/DE-labtory/cleisthenes"
-	"github.com/DE-labtory/cleisthenes/acs"
+	"github.com/DE-labtory/cleisthenes/honeybadger"
 	"github.com/DE-labtory/cleisthenes/pb"
 	"github.com/DE-labtory/iLogger"
 )
 
+// 하나로 빼기
 type handler struct {
 	ServeRequestFunc func(msg cleisthenes.Message)
 }
@@ -34,38 +35,41 @@ const (
 	Byzantine_Interceptor
 )
 
+type Batch map[cleisthenes.Member][]byte
+
 type Node struct {
 	n, f int
 	typ  NodeType
 
-	owner  cleisthenes.Member
-	acs    *acs.ACS
-	output map[cleisthenes.Member][]byte
+	owner cleisthenes.Member
 
-	server        *cleisthenes.GrpcServer
-	connPool      *cleisthenes.ConnectionPool
-	memberMap     *cleisthenes.MemberMap
-	batchReceiver cleisthenes.BatchReceiver
+	hb             *honeybadger.HoneyBadger
+	server         *cleisthenes.GrpcServer
+	connPool       *cleisthenes.ConnectionPool
+	memberMap      *cleisthenes.MemberMap
+	resultBatch    map[cleisthenes.Epoch]Batch
+	resultReceiver cleisthenes.ResultReceiver
 
 	doneChan chan struct{}
 }
 
-func NewNode(n, f int, owner cleisthenes.Member, batchReceiver cleisthenes.BatchReceiver, typ NodeType) *Node {
+func NewNode(n, f int, owner cleisthenes.Member, resultReceiver cleisthenes.ResultReceiver, typ NodeType) *Node {
 	server := cleisthenes.NewServer(owner.Address)
 	connPool := cleisthenes.NewConnectionPool()
 	memberMap := cleisthenes.NewMemberMap()
 
 	return &Node{
-		n:             n,
-		f:             f,
-		typ:           typ,
-		owner:         owner,
-		acs:           new(acs.ACS),
-		server:        server,
-		connPool:      connPool,
-		memberMap:     memberMap,
-		batchReceiver: batchReceiver,
-		doneChan:      make(chan struct{}, n),
+		n:              n,
+		f:              f,
+		typ:            typ,
+		owner:          owner,
+		server:         server,
+		resultBatch:    make(map[cleisthenes.Epoch]Batch, 0),
+		hb:             new(honeybadger.HoneyBadger),
+		connPool:       connPool,
+		memberMap:      memberMap,
+		resultReceiver: resultReceiver,
+		doneChan:       make(chan struct{}, n),
 	}
 }
 
@@ -91,8 +95,8 @@ func (n *Node) Run() {
 func (n *Node) run() {
 	for {
 		select {
-		case msg := <-n.batchReceiver.Receive():
-			n.output = msg.Batch
+		case <-n.resultReceiver.Receive():
+			//n.resultBatch[msg.Epoch] = msg.Batch
 			n.doneChan <- struct{}{}
 		}
 	}
@@ -130,12 +134,8 @@ func (n *Node) Close() {
 	}
 }
 
-func (n *Node) Propose(data []byte) error {
-	if err := n.acs.HandleInput(data); err != nil {
-		return errors.New(fmt.Sprintf("error in HandleInput : %s", err.Error()))
-	}
-
-	return nil
+func (n *Node) Propose(contribution cleisthenes.Contribution) {
+	n.hb.HandleContribution(contribution)
 }
 
 func (n *Node) Address() cleisthenes.Address {
@@ -143,9 +143,9 @@ func (n *Node) Address() cleisthenes.Address {
 }
 
 func (n *Node) serveRequestFunc(msg cleisthenes.Message) {
-	senderAddr, _ := cleisthenes.ToAddress(msg.Sender)
-	sender, _ := n.memberMap.Member(senderAddr)
-	n.acs.HandleMessage(sender, msg.Message)
+	if err := n.hb.HandleMessage(msg.Message); err != nil {
+		fmt.Println("[ERR]", err.Error())
+	}
 }
 
 func (n *Node) doAction(msg *cleisthenes.Message) {

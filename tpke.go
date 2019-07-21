@@ -8,7 +8,7 @@ type CipherText []byte
 type Tpke interface {
 	Encrypt(msg interface{}) ([]byte, error)
 	DecShare(ctBytes []byte) DecryptionShare
-	Decrypt(enc []byte) ([]byte, error)
+	Decrypt(enc []byte) ([]Transaction, error)
 	AcceptDecShare(addr Address, decShare DecryptionShare)
 	ClearDecShare()
 }

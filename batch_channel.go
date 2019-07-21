@@ -46,7 +46,7 @@ func (c *BatchChannel) Receive() <-chan BatchMessage {
 // then send it back to application
 type ResultMessage struct {
 	Epoch Epoch
-	Batch map[Member][]byte
+	Batch []AbstractTx
 }
 
 type ResultSender interface {

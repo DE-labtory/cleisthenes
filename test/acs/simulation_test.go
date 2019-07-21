@@ -46,6 +46,7 @@ func setNodeList(n, f int, nodeType []NodeType) []*Node {
 		binaryChan := cleisthenes.NewBinaryChannel(n)
 
 		a, _ := acs.New(n, f,
+			0,
 			mNode.owner,
 			*mNode.memberMap,
 			dataChan,

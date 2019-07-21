@@ -1,17 +1,23 @@
-package acs
+package integration
 
 import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"sync"
 	"time"
 
 	"github.com/DE-labtory/cleisthenes"
-	"github.com/DE-labtory/cleisthenes/acs"
 	"github.com/DE-labtory/cleisthenes/pb"
 	"github.com/DE-labtory/iLogger"
+	"github.com/mitchellh/mapstructure"
 )
 
+type exTransaction struct {
+	Amount int
+}
+
+// 하나로 빼기
 type handler struct {
 	ServeRequestFunc func(msg cleisthenes.Message)
 }
@@ -34,38 +40,69 @@ const (
 	Byzantine_Interceptor
 )
 
+// TODO : data race check! remove lock property
+type resultBatch struct {
+	lock  sync.RWMutex
+	txMap map[exTransaction]bool
+}
+
+func newResultBatch() resultBatch {
+	return resultBatch{
+		lock:  sync.RWMutex{},
+		txMap: make(map[exTransaction]bool),
+	}
+}
+
+func (r *resultBatch) add(tx exTransaction) {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	r.txMap[tx] = true
+}
+
+func (r *resultBatch) len() int {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	len := len(r.txMap)
+	return len
+}
+
+type Batch map[cleisthenes.Member][]byte
+
 type Node struct {
 	n, f int
 	typ  NodeType
 
-	owner  cleisthenes.Member
-	acs    *acs.ACS
-	output map[cleisthenes.Member][]byte
+	owner cleisthenes.Member
 
-	server        *cleisthenes.GrpcServer
-	connPool      *cleisthenes.ConnectionPool
-	memberMap     *cleisthenes.MemberMap
-	batchReceiver cleisthenes.BatchReceiver
+	txQueueManager  cleisthenes.TxQueueManager
+	messageEndpoint cleisthenes.MessageEndpoint
+	txValidator     cleisthenes.TxValidator
+
+	server         *cleisthenes.GrpcServer
+	connPool       *cleisthenes.ConnectionPool
+	memberMap      *cleisthenes.MemberMap
+	resultBatch    resultBatch
+	resultReceiver cleisthenes.ResultReceiver
 
 	doneChan chan struct{}
 }
 
-func NewNode(n, f int, owner cleisthenes.Member, batchReceiver cleisthenes.BatchReceiver, typ NodeType) *Node {
+func NewNode(n, f int, owner cleisthenes.Member, resultReceiver cleisthenes.ResultReceiver, typ NodeType) *Node {
 	server := cleisthenes.NewServer(owner.Address)
 	connPool := cleisthenes.NewConnectionPool()
 	memberMap := cleisthenes.NewMemberMap()
 
 	return &Node{
-		n:             n,
-		f:             f,
-		typ:           typ,
-		owner:         owner,
-		acs:           new(acs.ACS),
-		server:        server,
-		connPool:      connPool,
-		memberMap:     memberMap,
-		batchReceiver: batchReceiver,
-		doneChan:      make(chan struct{}, n),
+		n:              n,
+		f:              f,
+		typ:            typ,
+		owner:          owner,
+		server:         server,
+		resultBatch:    newResultBatch(),
+		connPool:       connPool,
+		memberMap:      memberMap,
+		resultReceiver: resultReceiver,
+		doneChan:       make(chan struct{}, n),
 	}
 }
 
@@ -91,10 +128,23 @@ func (n *Node) Run() {
 func (n *Node) run() {
 	for {
 		select {
-		case msg := <-n.batchReceiver.Receive():
-			n.output = msg.Batch
+		case msg := <-n.resultReceiver.Receive():
+			n.addToResultSet(msg.Batch)
 			n.doneChan <- struct{}{}
 		}
+	}
+}
+
+func (n *Node) decrypt(tx cleisthenes.AbstractTx) exTransaction {
+	var exTransaction exTransaction
+	mapstructure.Decode(tx, &exTransaction)
+	return exTransaction
+}
+
+func (n *Node) addToResultSet(txList []cleisthenes.AbstractTx) {
+	for _, tx := range txList {
+		exTx := n.decrypt(tx)
+		n.resultBatch.add(exTx)
 	}
 }
 
@@ -130,12 +180,8 @@ func (n *Node) Close() {
 	}
 }
 
-func (n *Node) Propose(data []byte) error {
-	if err := n.acs.HandleInput(data); err != nil {
-		return errors.New(fmt.Sprintf("error in HandleInput : %s", err.Error()))
-	}
-
-	return nil
+func (n *Node) AddTransaction(tx cleisthenes.Transaction) {
+	n.txQueueManager.AddTransaction(tx)
 }
 
 func (n *Node) Address() cleisthenes.Address {
@@ -143,9 +189,9 @@ func (n *Node) Address() cleisthenes.Address {
 }
 
 func (n *Node) serveRequestFunc(msg cleisthenes.Message) {
-	senderAddr, _ := cleisthenes.ToAddress(msg.Sender)
-	sender, _ := n.memberMap.Member(senderAddr)
-	n.acs.HandleMessage(sender, msg.Message)
+	if err := n.messageEndpoint.HandleMessage(msg.Message); err != nil {
+		fmt.Println("[ERR]", err.Error())
+	}
 }
 
 func (n *Node) doAction(msg *cleisthenes.Message) {

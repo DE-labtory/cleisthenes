@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sync/atomic"
 
+	"github.com/DE-labtory/iLogger"
+
 	"github.com/DE-labtory/cleisthenes/rbc"
 
 	"github.com/DE-labtory/cleisthenes"
@@ -25,6 +27,7 @@ type ACS struct {
 	// number of byzantine nodes which can tolerate
 	f int
 
+	epoch cleisthenes.Epoch
 	owner cleisthenes.Member
 
 	memberMap cleisthenes.MemberMap
@@ -46,6 +49,8 @@ type ACS struct {
 
 	dec cleisthenes.BinaryState
 
+	tmp cleisthenes.BinaryState
+
 	reqChan       chan request
 	agreementChan chan struct{}
 	closeChan     chan struct{}
@@ -64,6 +69,7 @@ type ACS struct {
 func New(
 	n int,
 	f int,
+	epoch cleisthenes.Epoch,
 	owner cleisthenes.Member,
 	memberMap cleisthenes.MemberMap,
 	dataReceiver cleisthenes.DataReceiver,
@@ -77,6 +83,7 @@ func New(
 	acs := &ACS{
 		n:                n,
 		f:                f,
+		epoch:            epoch,
 		owner:            owner,
 		memberMap:        memberMap,
 		rbcRepo:          NewRBCRepository(),
@@ -85,17 +92,17 @@ func New(
 		agreementResult:  NewBinaryStateMap(),
 		agreementStarted: NewBinaryStateMap(),
 		// TODO : consider size of reqChan, otherwise this might cause requests to be lost
-		reqChan:        make(chan request),
-		agreementChan:  make(chan struct{}, n),
-		closeChan:      make(chan struct{}, 1),
+		reqChan:        make(chan request, n*n*8),
+		agreementChan:  make(chan struct{}, n*8),
+		closeChan:      make(chan struct{}),
 		dataReceiver:   dataReceiver,
 		binaryReceiver: binaryReceiver,
 		batchSender:    batchSender,
 	}
 
 	for _, member := range memberMap.Members() {
-		r, err := rbc.New(n, f, owner, member, broadCaster, dataSender)
-		b := bba.New(n, f, owner, member, broadCaster, binarySender)
+		r, err := rbc.New(n, f, epoch, owner, member, broadCaster, dataSender)
+		b := bba.New(n, f, epoch, owner, member, broadCaster, binarySender)
 		if err != nil {
 			return nil, err
 		}
@@ -147,12 +154,20 @@ func (acs *ACS) Result() cleisthenes.Batch {
 }
 
 func (acs *ACS) Close() {
+	for _, rbc := range acs.rbcRepo.FindAll() {
+		rbc.Close()
+	}
+
+	for _, bba := range acs.bbaRepo.FindAll() {
+		bba.Close()
+	}
+
+	acs.closeChan <- struct{}{}
+	<-acs.closeChan
 	if first := atomic.CompareAndSwapInt32(&acs.stopFlag, int32(0), int32(1)); !first {
 		return
 	}
-	acs.closeChan <- struct{}{}
-	<-acs.closeChan
-	close(acs.closeChan)
+	//close(acs.closeChan)
 }
 
 func (acs *ACS) muxMessage(proposer, sender cleisthenes.Member, msg *pb.Message) error {
@@ -189,6 +204,7 @@ func (acs *ACS) run() {
 		select {
 		case <-acs.closeChan:
 			acs.closeChan <- struct{}{}
+			return
 		case req := <-acs.reqChan:
 			req.err <- acs.muxMessage(req.proposer, req.sender, req.data)
 		case output := <-acs.dataReceiver.Receive():
@@ -214,7 +230,10 @@ func (acs *ACS) sendZeroToIdleBba() {
 		}
 
 		if state := acs.agreementStarted.item(member); state.Undefined() && b.Idle() {
-			b.HandleInput(&bba.BvalRequest{Value: cleisthenes.Zero})
+			acs.tmp.Set(true)
+			if err := b.HandleInput(0, &bba.BvalRequest{Value: cleisthenes.Zero}); err != nil {
+				fmt.Printf("error in HandleInput : %s", err.Error())
+			}
 		}
 	}
 }
@@ -245,6 +264,7 @@ func (acs *ACS) tryCompleteAgreement() {
 }
 
 func (acs *ACS) agreementSuccess(result map[cleisthenes.Member][]byte) {
+	iLogger.Debugf(nil, "[ACS done] epoch : %d, owner : %s\n", acs.epoch, acs.owner.Address.String())
 	acs.batchSender.Send(cleisthenes.BatchMessage{
 		Batch: result,
 	})
@@ -269,9 +289,14 @@ func (acs *ACS) tryAgreementStart(sender cleisthenes.Member) {
 		return
 	}
 
-	b.HandleInput(&bba.BvalRequest{Value: cleisthenes.One})
+	if err := b.HandleInput(b.Round(), &bba.BvalRequest{Value: cleisthenes.One}); err != nil {
+		fmt.Printf("error in HandleInput : %s\n", err.Error())
+	}
 	state.Set(cleisthenes.One)
 	acs.agreementStarted.set(sender, state)
+	if acs.tmp.Value() {
+		fmt.Printf("acs try start epoch : %d, onwer : %s, proposer : %s\n", acs.epoch, acs.owner.Address.String(), sender.Address.String())
+	}
 	return
 }
 
@@ -303,7 +328,7 @@ func (acs *ACS) processAgreement(sender cleisthenes.Member, bin cleisthenes.Bina
 
 	state.Set(bin)
 	acs.agreementResult.set(sender, state)
-
+	iLogger.Debugf(nil, "bba done epoch : %d, onwer : %s, proposer : %s\n", acs.epoch, acs.owner.Address.String(), sender.Address.String())
 	if acs.countSuccessDoneAgreement() == acs.agreementThreshold() {
 		acs.agreementChan <- struct{}{}
 	}

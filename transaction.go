@@ -2,6 +2,8 @@ package cleisthenes
 
 type Transaction interface{}
 
+type AbstractTx map[string]interface{}
+
 // TODO: should be removed, after ACS merged
 // TODO: ACS should use BatchMessage instead
 type Batch struct {

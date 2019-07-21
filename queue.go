@@ -180,7 +180,7 @@ func (m *DefaultTxQueueManager) runContributionProposeRoutine() {
 		if !m.hb.OnConsensus() {
 			m.tryPropose()
 		}
-		iLogger.Debug(nil, "[DefaultTxQueueManager] try to propose contribution...")
+		iLogger.Debugf(nil, "[DefaultTxQueueManager] try to propose contribution...")
 		time.Sleep(m.tryInterval)
 	}
 }
@@ -191,10 +191,12 @@ func (m *DefaultTxQueueManager) tryPropose() error {
 	if m.txQueue.Len() < int(m.contributionSize) {
 		return nil
 	}
+
 	contribution, err := m.createContribution()
 	if err != nil {
 		return err
 	}
+
 	m.hb.HandleContribution(contribution)
 	return nil
 }

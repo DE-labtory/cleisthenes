@@ -57,8 +57,8 @@ func NewConnection(ip Address, id ConnId, streamWrapper StreamWrapper) (Connecti
 		id:            id,
 		ip:            ip,
 		streamWrapper: streamWrapper,
-		outChan:       make(chan *innerMessage, 200),
-		readChan:      make(chan *pb.Message, 200),
+		outChan:       make(chan *innerMessage, 20000),
+		readChan:      make(chan *pb.Message, 20000),
 		stopChan:      make(chan struct{}, 1),
 	}, nil
 }

@@ -77,7 +77,7 @@ func New(typ NodeType, n, f int, coinGenerator cleisthenes.CoinGenerator, addr c
 	connPool := cleisthenes.NewConnectionPool()
 	memberMap := cleisthenes.NewMemberMap()
 	binChan := cleisthenes.NewBinaryChannel(n)
-	bba := engine.New(n, f, *member, cleisthenes.Member{}, connPool, binChan)
+	bba := engine.New(n, f, 0, *member, cleisthenes.Member{}, connPool, binChan)
 	return &Node{
 		typ:       typ,
 		addr:      addr,
@@ -132,7 +132,7 @@ func (n *Node) Connect(addr cleisthenes.Address) error {
 
 func (n *Node) Propose(bin cleisthenes.Binary) error {
 	bvalRequest := &engine.BvalRequest{Value: bin}
-	return n.bba.HandleInput(bvalRequest)
+	return n.bba.HandleInput(1, bvalRequest)
 }
 
 func (n *Node) Close() {

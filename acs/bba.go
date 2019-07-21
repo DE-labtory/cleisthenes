@@ -9,10 +9,11 @@ import (
 )
 
 type BBA interface {
-	HandleInput(bvalRequest *bba.BvalRequest) error
+	HandleInput(round uint64, bvalRequest *bba.BvalRequest) error
 	HandleMessage(sender cleisthenes.Member, msg *pb.Message_Bba) error
 	Close()
 	Idle() bool
+	Round() uint64
 }
 
 type BBARepository struct {

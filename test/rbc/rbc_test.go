@@ -46,7 +46,7 @@ func setNodeList(n, f int, nodeType []NodeType) []*Node {
 
 		owner, _ := mNode.memberMap.Member(mNode.address)
 		for _, member := range mNode.memberMap.Members() {
-			r, _ := rbc.New(n, f, owner, member, mNode.connPool, dataChanList[m])
+			r, _ := rbc.New(n, f, 0, owner, member, mNode.connPool, dataChanList[m])
 			mNode.rbcMap[member.Address] = r
 			mNode.dataOutputMap.set(member.Address, nil)
 		}
