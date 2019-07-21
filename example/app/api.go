@@ -54,6 +54,21 @@ func NewApiHandler(hbbft core.Hbbft, logger kitlog.Logger) http.Handler {
 		encodeResponse,
 		opts...,
 	))
+
+	r.Methods("POST").Path("/connections").Handler(kithttp.NewServer(
+		endpoint.createConnections,
+		decodeCreateConnectionsRequest,
+		encodeResponse,
+		opts...,
+	))
+
+	r.Methods("GET").Path("/connections").Handler(kithttp.NewServer(
+		endpoint.getConnections,
+		decodeGetConnectionsRequest,
+		encodeResponse,
+		opts...,
+	))
+
 	return r
 }
 
@@ -75,11 +90,60 @@ func (e *endpoint) makeProposeTxEndpoint() kitendpoint.Endpoint {
 	}
 }
 
+func (e *endpoint) createConnections(ctx context.Context, request interface{}) (interface{}, error) {
+	e.logger.Log("endpoint", "createConnections")
+
+	f := e.makeCreateConnectionsEndpoint()
+	response, err := f(ctx, request)
+	if err != nil {
+		e.logger.Log("endpoint", "createConnections", "err", err.Error())
+	}
+	return response, err
+}
+
+func (e *endpoint) makeCreateConnectionsEndpoint() kitendpoint.Endpoint {
+	return func(ctx context.Context, request interface{}) (interface{}, error) {
+		req := request.(CreateConnectionsRequest)
+		return CreateConnectionsResponse{}, e.hbbft.ConnectAll(req.TargetList)
+	}
+}
+
+func (e *endpoint) getConnections(ctx context.Context, request interface{}) (interface{}, error) {
+	e.logger.Log("endpoint", "getConnections")
+
+	f := e.makeGetConnectionsEndpoint()
+	response, err := f(ctx, request)
+	if err != nil {
+		e.logger.Log("endpoint", "getConnections", "err", err.Error())
+	}
+	return response, err
+}
+
+func (e *endpoint) makeGetConnectionsEndpoint() kitendpoint.Endpoint {
+	return func(ctx context.Context, request interface{}) (interface{}, error) {
+		return GetConnectionsResponse{
+			ConnectionList: e.hbbft.ConnectionList(),
+		}, nil
+	}
+}
+
 type ProposeTxRequest struct {
 	Transaction Transaction `json:"transaction"`
 }
 
 type ProposeTxResponse struct{}
+
+type CreateConnectionsRequest struct {
+	TargetList []string `json:"targets"`
+}
+
+type CreateConnectionsResponse struct{}
+
+type GetConnectionsRequest struct{}
+
+type GetConnectionsResponse struct {
+	ConnectionList []string `json:"connections"`
+}
 
 func decodeProposeTxRequest(_ context.Context, r *http.Request) (interface{}, error) {
 	body := ProposeTxRequest{}
@@ -91,6 +155,19 @@ func decodeProposeTxRequest(_ context.Context, r *http.Request) (interface{}, er
 		return nil, ErrIllegalArgument{"transaction is empty"}
 	}
 	return body, nil
+}
+
+func decodeCreateConnectionsRequest(_ context.Context, r *http.Request) (interface{}, error) {
+	body := CreateConnectionsRequest{}
+	err := json.NewDecoder(r.Body).Decode(&body)
+	if err != nil {
+		return nil, err
+	}
+	return body, nil
+}
+
+func decodeGetConnectionsRequest(_ context.Context, r *http.Request) (interface{}, error) {
+	return GetConnectionsRequest{}, nil
 }
 
 func encodeResponse(ctx context.Context, w http.ResponseWriter, response interface{}) error {
