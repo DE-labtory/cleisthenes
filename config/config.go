@@ -39,7 +39,7 @@ type Config struct {
 // TODO: change default config
 var defaultConfig = &Config{
 	Identity: Identity{
-		Address: "localhost:5555",
+		Address: "localhost:15555",
 	},
 	HoneyBadger: HoneyBadger{
 		NetworkSize:     10,

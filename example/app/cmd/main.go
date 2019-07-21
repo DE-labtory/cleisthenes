@@ -3,11 +3,11 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/DE-labtory/cleisthenes"
-	"github.com/DE-labtory/cleisthenes/core"
 	"net/http"
 	"os"
 
+	"github.com/DE-labtory/cleisthenes"
+	"github.com/DE-labtory/cleisthenes/core"
 
 	"github.com/DE-labtory/cleisthenes/config"
 	"github.com/DE-labtory/cleisthenes/example/app"
@@ -16,7 +16,7 @@ import (
 
 func main() {
 	host := flag.String("address", "127.0.0.1", "Application address")
-	port := flag.Int("port", 8080, "Application port")
+	port := flag.Int("port", 18080, "Application port")
 	configPath := flag.String("config", "", "User defined config path")
 
 	address := fmt.Sprintf("%s:%d", *host, *port)
@@ -26,8 +26,6 @@ func main() {
 	httpLogger := kitlog.With(kitLogger, "component", "http")
 
 	config.Init(*configPath)
-
-	//node := mock.NewMockNode(httpLogger)
 
 	txValidator := func(tx cleisthenes.Transaction) bool {
 		// custom transaction validation logic
