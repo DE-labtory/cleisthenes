@@ -3,11 +3,12 @@ package cleisthenes
 import (
 	"errors"
 	"fmt"
-	"github.com/DE-labtory/iLogger"
 	"math/rand"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/DE-labtory/iLogger"
 )
 
 type TxQueue interface {

@@ -28,6 +28,9 @@ func (h *handler) ServeRequest(msg cleisthenes.Message) {
 type Hbbft interface {
 	Submit(tx cleisthenes.Transaction) error
 	Run()
+	Connect(target string) error
+	ConnectAll(targetList []string) error
+	ConnectionList() []string
 	Result() <-chan cleisthenes.ResultMessage
 }
 
@@ -125,18 +128,21 @@ func (n *Node) Submit(tx cleisthenes.Transaction) error {
 	return n.txQueueManager.AddTransaction(tx)
 }
 
-func (n *Node) Connect() error {
-	for _, addrStr := range config.Get().Members.Addresses {
-		addr, err := cleisthenes.ToAddress(addrStr)
-		if err != nil {
-			return err
-		}
-		if err := n.connect(addr); err != nil {
+func (n *Node) ConnectAll(targetList []string) error {
+	for _, target := range targetList {
+		if err := n.Connect(target); err != nil {
 			return err
 		}
 	}
-
 	return nil
+}
+
+func (n *Node) Connect(target string) error {
+	addr, err := cleisthenes.ToAddress(target)
+	if err != nil {
+		return err
+	}
+	return n.connect(addr)
 }
 
 func (n *Node) connect(addr cleisthenes.Address) error {
@@ -156,6 +162,14 @@ func (n *Node) connect(addr cleisthenes.Address) error {
 	n.connPool.Add(addr, conn)
 	n.memberMap.Add(cleisthenes.NewMemberWithAddress(addr))
 	return nil
+}
+
+func (n *Node) ConnectionList() []string {
+	result := make([]string, 0)
+	for _, conn := range n.connPool.GetAll() {
+		result = append(result, conn.Ip().String())
+	}
+	return result
 }
 
 func (n *Node) Close() {
