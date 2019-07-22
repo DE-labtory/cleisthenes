@@ -10,7 +10,8 @@ import (
 )
 
 type Identity struct {
-	Address string
+	Address         string
+	ExternalAddress string
 }
 
 type HoneyBadger struct {
@@ -39,7 +40,8 @@ type Config struct {
 // TODO: change default config
 var defaultConfig = &Config{
 	Identity: Identity{
-		Address: "127.0.0.1:5000",
+		Address:         "127.0.0.1:5000",
+		ExternalAddress: "",
 	},
 	HoneyBadger: HoneyBadger{
 		NetworkSize:     4,

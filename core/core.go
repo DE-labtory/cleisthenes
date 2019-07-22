@@ -49,13 +49,17 @@ type Node struct {
 func New(txValidator cleisthenes.TxValidator) (Hbbft, error) {
 	conf := config.Get()
 
-	addr, err := cleisthenes.ToAddress(conf.Identity.Address)
+	local, err := cleisthenes.ToAddress(conf.Identity.Address)
+	if err != nil {
+		return nil, err
+	}
+	external, err := cleisthenes.ToAddress(conf.Identity.ExternalAddress)
 	if err != nil {
 		return nil, err
 	}
 
 	memberMap := cleisthenes.NewMemberMap()
-	memberMap.Add(cleisthenes.NewMemberWithAddress(addr))
+	memberMap.Add(cleisthenes.NewMemberWithAddress(external))
 
 	connPool := cleisthenes.NewConnectionPool()
 
@@ -70,7 +74,7 @@ func New(txValidator cleisthenes.TxValidator) (Hbbft, error) {
 		honeybadger.NewDefaultACSFactory(
 			conf.HoneyBadger.NetworkSize,
 			conf.HoneyBadger.Byzantine,
-			*cleisthenes.NewMemberWithAddress(addr),
+			*cleisthenes.NewMemberWithAddress(external),
 			*memberMap,
 			dataChan,
 			dataChan,
@@ -85,7 +89,7 @@ func New(txValidator cleisthenes.TxValidator) (Hbbft, error) {
 	)
 
 	return &Node{
-		addr: addr,
+		addr: external,
 		txQueueManager: cleisthenes.NewDefaultTxQueueManager(
 			txQueue,
 			hb,
@@ -97,7 +101,7 @@ func New(txValidator cleisthenes.TxValidator) (Hbbft, error) {
 		),
 		resultReceiver:  resultChan,
 		messageEndpoint: hb,
-		server:          cleisthenes.NewServer(addr),
+		server:          cleisthenes.NewServer(local),
 		client:          cleisthenes.NewClient(),
 		connPool:        connPool,
 		memberMap:       memberMap,
