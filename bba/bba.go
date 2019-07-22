@@ -9,8 +9,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/DE-labtory/iLogger"
-
 	"github.com/DE-labtory/cleisthenes/test/mock"
 
 	"github.com/golang/protobuf/ptypes"
@@ -355,7 +353,7 @@ func (bba *BBA) agreementSuccess(round uint64, decValue cleisthenes.Binary) {
 		"my.round", strconv.FormatUint(bba.round.value(), 10),
 	)
 
-	iLogger.Debugf(nil, "[BBA success] epoch : %d, owner : %s, proposer : %s\n", bba.epoch, bba.owner.Address.String(), bba.proposer.Address.String())
+	//iLogger.Debugf(nil, "[BBA success] epoch : %d, owner : %s, proposer : %s\n", bba.epoch, bba.owner.Address.String(), bba.proposer.Address.String())
 	bba.advanceRoundChan <- round
 }
 
@@ -365,7 +363,7 @@ func (bba *BBA) advanceRound(round uint64) {
 	}
 	bba.Log("action", "advanceRound", "from", bba.owner.Address.String())
 	bba.round.inc()
-	iLogger.Debugf(nil, "[BBA advance] epoch : %d, round : %d, owner : %s, proposer : %s\n", bba.epoch, round, bba.owner.Address.String(), bba.proposer.Address.String())
+	//iLogger.Debugf(nil, "[BBA advance] epoch : %d, round : %d, owner : %s, proposer : %s\n", bba.epoch, round, bba.owner.Address.String(), bba.proposer.Address.String())
 
 	bba.handleDelayedBvalRequest(round + 1)
 

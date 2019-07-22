@@ -16,7 +16,7 @@ import (
 
 func main() {
 	host := flag.String("address", "127.0.0.1", "Application address")
-	port := flag.Int("port", 18080, "Application port")
+	port := flag.Int("port", 8000, "Application port")
 	configPath := flag.String("config", "", "User defined config path")
 
 	address := fmt.Sprintf("%s:%d", *host, *port)
@@ -36,6 +36,13 @@ func main() {
 	if err != nil {
 		panic(fmt.Sprintf("Cleisthenes instantiate failed with err: %s", err))
 	}
+
+	go func() {
+		for {
+			result := <-node.Result()
+			fmt.Printf("[DONE]epoch : %d, batch tx count : %d\n", result.Epoch, len(result.Batch))
+		}
+	}()
 
 	go func() {
 		httpLogger.Log("message", "hbbft started")

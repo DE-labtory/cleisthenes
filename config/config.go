@@ -39,12 +39,12 @@ type Config struct {
 // TODO: change default config
 var defaultConfig = &Config{
 	Identity: Identity{
-		Address: "localhost:15555",
+		Address: "127.0.0.1:5000",
 	},
 	HoneyBadger: HoneyBadger{
 		NetworkSize:     4,
 		Byzantine:       1,
-		BatchSize:       32,
+		BatchSize:       4,
 		ProposeInterval: 1 * time.Second,
 	},
 	Members: Members{

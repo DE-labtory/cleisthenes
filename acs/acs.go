@@ -182,6 +182,7 @@ func (acs *ACS) muxMessage(proposer, sender cleisthenes.Member, msg *pb.Message)
 }
 
 func (acs *ACS) handleRbcMessage(proposer, sender cleisthenes.Member, msg *pb.Message_Rbc) error {
+
 	rbc, err := acs.rbcRepo.Find(proposer)
 	if err != nil {
 		return errors.New(fmt.Sprintf("no match bba instance - address : %s", acs.owner.Address.String()))
@@ -264,8 +265,12 @@ func (acs *ACS) tryCompleteAgreement() {
 }
 
 func (acs *ACS) agreementSuccess(result map[cleisthenes.Member][]byte) {
+	for member, _ := range result {
+		fmt.Println(member.Address.String())
+	}
 	iLogger.Debugf(nil, "[ACS done] epoch : %d, owner : %s\n", acs.epoch, acs.owner.Address.String())
 	acs.batchSender.Send(cleisthenes.BatchMessage{
+		Epoch: acs.epoch,
 		Batch: result,
 	})
 	acs.dec.Set(true)
@@ -328,7 +333,7 @@ func (acs *ACS) processAgreement(sender cleisthenes.Member, bin cleisthenes.Bina
 
 	state.Set(bin)
 	acs.agreementResult.set(sender, state)
-	iLogger.Debugf(nil, "bba done epoch : %d, onwer : %s, proposer : %s\n", acs.epoch, acs.owner.Address.String(), sender.Address.String())
+	//iLogger.Debugf(nil, "bba done epoch : %d, onwer : %s, proposer : %s\n", acs.epoch, acs.owner.Address.String(), sender.Address.String())
 	if acs.countSuccessDoneAgreement() == acs.agreementThreshold() {
 		acs.agreementChan <- struct{}{}
 	}

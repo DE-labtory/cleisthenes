@@ -8,8 +8,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/DE-labtory/iLogger"
-
 	"github.com/DE-labtory/cleisthenes"
 	"github.com/DE-labtory/cleisthenes/pb"
 	"github.com/DE-labtory/cleisthenes/rbc/merkletree"
@@ -456,7 +454,7 @@ func (rbc *RBC) decodeSuccess(decValue []byte) {
 		Data:   rbc.output.value(),
 	})
 	rbc.output.delete()
-	iLogger.Debugf(nil, "[RBC success] epoch : %d, owner : %s, proposer : %s\n", rbc.epoch, rbc.owner.Address.String(), rbc.proposer.Address.String())
+	//iLogger.Debugf(nil, "[RBC success] epoch : %d, owner : %s, proposer : %s\n", rbc.epoch, rbc.owner.Address.String(), rbc.proposer.Address.String())
 }
 
 // wait until receive N - f ECHO messages
