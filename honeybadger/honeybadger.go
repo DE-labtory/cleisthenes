@@ -6,6 +6,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/DE-labtory/iLogger"
+
 	"github.com/DE-labtory/cleisthenes"
 	"github.com/DE-labtory/cleisthenes/pb"
 )
@@ -199,7 +201,9 @@ func (hb *HoneyBadger) run() {
 				}
 			}
 		case batchMessage := <-hb.batchReceiver.Receive():
-			hb.handleBatchMessage(batchMessage)
+			if err := hb.handleBatchMessage(batchMessage); err != nil {
+				iLogger.Debugf(nil, "error in handleBatchMessage : %s", err.Error())
+			}
 			hb.advanceEpoch()
 			hb.finConsensus()
 		}

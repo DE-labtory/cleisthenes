@@ -60,9 +60,9 @@ func New(txValidator cleisthenes.TxValidator) (Hbbft, error) {
 	connPool := cleisthenes.NewConnectionPool()
 
 	dataChan := cleisthenes.NewDataChannel(conf.HoneyBadger.NetworkSize)
-	batchChan := cleisthenes.NewBatchChannel(conf.HoneyBadger.NetworkSize)
+	batchChan := cleisthenes.NewBatchChannel(10)
 	binChan := cleisthenes.NewBinaryChannel(conf.HoneyBadger.NetworkSize)
-	resultChan := cleisthenes.NewResultChannel(conf.HoneyBadger.NetworkSize)
+	resultChan := cleisthenes.NewResultChannel(10)
 
 	txQueue := cleisthenes.NewTxQueue()
 	hb := honeybadger.New(
@@ -89,7 +89,7 @@ func New(txValidator cleisthenes.TxValidator) (Hbbft, error) {
 		txQueueManager: cleisthenes.NewDefaultTxQueueManager(
 			txQueue,
 			hb,
-			conf.HoneyBadger.BatchSize/len(memberMap.Members()),
+			conf.HoneyBadger.BatchSize/conf.HoneyBadger.NetworkSize,
 			// TODO : contribution size = B / N
 			conf.HoneyBadger.BatchSize,
 			conf.HoneyBadger.ProposeInterval,
@@ -100,7 +100,7 @@ func New(txValidator cleisthenes.TxValidator) (Hbbft, error) {
 		server:          cleisthenes.NewServer(addr),
 		client:          cleisthenes.NewClient(),
 		connPool:        connPool,
-		memberMap:       cleisthenes.NewMemberMap(),
+		memberMap:       memberMap,
 	}, nil
 }
 
